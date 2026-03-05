@@ -85,13 +85,12 @@ nvidia-smi
 ## 2. Clone / Open the Project
 
 ```
-git clone https://github.com/benjiyaya/Muse-Studio-Agent.git v3_src
-cd v3_src
+git clone https://github.com/benjiyaya/Muse-Studio.git
 ```
 
 Project layout:
 ```
-v3_src/                     ← repo / project root
+/                     ← repo / project root
 ├── muse-studio/            ← Next.js frontend
 ├── muse_backend/           ← Python FastAPI backend
 └── README.md               ← This file
