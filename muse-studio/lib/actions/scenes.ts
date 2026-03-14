@@ -65,6 +65,41 @@ export async function createScene(data: {
   return id;
 }
 
+/** Ingest a scene from backend long-form generation (preserves sceneId and sceneNumber). */
+export async function ingestScene(
+  projectId: string,
+  scene: {
+    sceneId: string;
+    sceneNumber: number;
+    title: string;
+    heading: string;
+    description: string;
+    dialogue?: string | null;
+    technicalNotes?: string | null;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO scenes
+      (id, project_id, scene_number, title, heading, description, dialogue, technical_notes,
+       status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SCRIPT', ?, ?)
+  `).run(
+    scene.sceneId,
+    projectId,
+    scene.sceneNumber,
+    scene.title,
+    scene.heading,
+    scene.description,
+    scene.dialogue ?? null,
+    scene.technicalNotes ?? null,
+    now,
+    now,
+  );
+  db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(now, projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
 /** Update a scene's status (used by Kanban drag-and-drop). */
 export async function updateSceneStatus(
   sceneId: string,

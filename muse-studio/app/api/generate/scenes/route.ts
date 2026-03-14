@@ -7,6 +7,9 @@ import { db } from '@/db';
  * Reads the confirmed storyline from DB for a project, then streams an LLM
  * to generate a set of scene scripts. Saves each scene to the DB as it's parsed.
  *
+ * Large scene counts (e.g. 40) can cause timeouts and stream issues. We cap at
+ * MAX_SCENES_PER_REQUEST and scale Ollama num_predict/timeout by count.
+ *
  * SSE events (named):
  *   event: import  — storyline field imported (for the checklist animation)
  *   event: text    — raw LLM text delta (for optional display)
@@ -15,6 +18,8 @@ import { db } from '@/db';
  *   event: error   — fatal error
  *   : ping         — keep-alive comment while model loads
  */
+
+const MAX_SCENES_PER_REQUEST = 24;
 
 // ── Scene generation system prompt ───────────────────────────────────────────
 
@@ -96,9 +101,14 @@ async function* generateOllamaText(opts: {
   model: string;
   systemPrompt: string;
   userMessage: string;
+  /** Max tokens to generate; scaled by scene count when not set. */
+  numPredict?: number;
+  /** Request timeout in ms; scaled by scene count when not set. */
+  timeoutMs?: number;
 }): AsyncGenerator<string> {
   const cleanUrl = opts.baseUrl.replace(/\/+$/, '');
-  const TIMEOUT = 15 * 60 * 1000;
+  const numPredict = opts.numPredict ?? 8000;
+  const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1000;
 
   let res: globalThis.Response;
   try {
@@ -112,13 +122,13 @@ async function* generateOllamaText(opts: {
           { role: 'user', content: opts.userMessage },
         ],
         stream: true,
-        options: { temperature: 0.75, num_predict: 3000 },
+        options: { temperature: 0.75, num_predict: numPredict },
       }),
-      signal: AbortSignal.timeout(TIMEOUT),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     const msg = (err instanceof Error && err.name === 'TimeoutError')
-      ? `Ollama timed out loading "${opts.model}". Try a smaller model.`
+      ? `Ollama timed out (${Math.round(timeoutMs / 60000)} min). Try fewer scenes or a faster model.`
       : `Cannot connect to Ollama at ${cleanUrl}. Is it running?`;
     throw new Error(msg);
   }
@@ -309,12 +319,26 @@ export async function POST(req: NextRequest) {
   const openaiModel = settings.openai_model ?? 'gpt-4o';
   const claudeModel = settings.claude_model ?? 'claude-sonnet-4-6';
 
-  // Resolve requested scene count (fallback to 5 for compatibility)
-  const targetScenes = Number.isFinite(body.targetScenes as number)
+  // Resolve requested scene count (fallback to 5 for compatibility); cap to avoid timeouts/stream issues
+  const requested = Number.isFinite(body.targetScenes as number)
     ? Math.max(1, Math.floor(body.targetScenes as number))
     : 5;
+  if (requested > MAX_SCENES_PER_REQUEST) {
+    return new Response(
+      JSON.stringify({
+        error: `Requested ${requested} scenes. For stability, generate at most ${MAX_SCENES_PER_REQUEST} scenes per run. Use ${MAX_SCENES_PER_REQUEST} and add more from the Kanban.`,
+      }),
+      { status: 400 },
+    );
+  }
+  const targetScenes = requested;
 
   const sceneSystemPrompt = buildSceneSystemPrompt(targetScenes);
+
+  // Scale Ollama token limit and timeout for large scene counts
+  const ollamaNumPredict = Math.min(32_000, Math.max(3_000, 500 * targetScenes));
+  const ollamaTimeoutMs = 15 * 60 * 1000 + Math.max(0, targetScenes - 10) * 60 * 1000;
+  const ollamaTimeoutCapped = Math.min(60 * 60 * 1000, ollamaTimeoutMs);
 
   // Build the user message from storyline
   const userMessage = [
@@ -376,6 +400,8 @@ export async function POST(req: NextRequest) {
             model: ollamaModel,
             systemPrompt: sceneSystemPrompt,
             userMessage,
+            numPredict: ollamaNumPredict,
+            timeoutMs: ollamaTimeoutCapped,
           });
         }
       } catch (err) {
@@ -384,10 +410,17 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      // Keep-alive while model is loading
+      // Keep-alive while model is loading (Ollama can take a while to load the model)
       let firstTokenReceived = false;
+      let streamClosed = false;
       const keepAlive = setInterval(() => {
-        if (!firstTokenReceived) enqueue(sseKeepAlive());
+        if (streamClosed || firstTokenReceived) return;
+        try {
+          controller.enqueue(sseKeepAlive());
+        } catch {
+          streamClosed = true;
+          clearInterval(keepAlive);
+        }
       }, 5000);
 
       let accumulated = '';
@@ -401,13 +434,23 @@ export async function POST(req: NextRequest) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SCRIPT', ?, ?)
       `);
 
+      const safeEnqueue = (bytes: Uint8Array) => {
+        try {
+          controller.enqueue(bytes);
+        } catch {
+          streamClosed = true;
+          clearInterval(keepAlive);
+        }
+      };
+
       try {
         for await (const chunk of generator) {
+          if (streamClosed) break;
           firstTokenReceived = true;
           accumulated += chunk;
 
-          // Send raw text delta so overlay can optionally show it
-          enqueue(sseNamedEvent('text', { delta: chunk }));
+          // Send raw text delta so overlay can optionally show it (client may have disconnected)
+          safeEnqueue(sseNamedEvent('text', { delta: chunk }));
 
           // Parse complete <<<SCENE>>>...<<<END>>> blocks
           while (true) {
@@ -436,7 +479,7 @@ export async function POST(req: NextRequest) {
                 now, now,
               );
 
-              enqueue(sseNamedEvent('scene', {
+              safeEnqueue(sseNamedEvent('scene', {
                 sceneId,
                 sceneNumber: scene.sceneNumber,
                 title: scene.title,
@@ -449,8 +492,10 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (err) {
-        enqueue(sseNamedEvent('error', { message: String(err) }));
+        if (!streamClosed) safeEnqueue(sseNamedEvent('error', { message: String(err) }));
       } finally {
+        streamClosed = true;
+        clearInterval(keepAlive);
         // Final attempt to parse any remaining complete blocks in the buffer
         while (true) {
           const endIdx = accumulated.indexOf('<<<END>>>');
@@ -477,7 +522,7 @@ export async function POST(req: NextRequest) {
               now, now,
             );
 
-            enqueue(sseNamedEvent('scene', {
+            safeEnqueue(sseNamedEvent('scene', {
               sceneId,
               sceneNumber: scene.sceneNumber,
               title: scene.title,
@@ -489,10 +534,13 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        clearInterval(keepAlive);
         const underfilled = parsedCount > 0 && parsedCount < targetScenes;
-        enqueue(sseNamedEvent('done', { totalScenes: parsedCount, underfilled }));
-        controller.close();
+        try {
+          if (!streamClosed) controller.enqueue(sseNamedEvent('done', { totalScenes: parsedCount, underfilled }));
+          controller.close();
+        } catch {
+          // Client may have disconnected; ignore
+        }
       }
     },
   });

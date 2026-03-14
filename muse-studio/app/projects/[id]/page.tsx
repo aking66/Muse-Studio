@@ -168,13 +168,28 @@ export default async function ProjectKanbanPage({ params, searchParams }: PagePr
           <StorylineStageWrapper project={project} llmSettings={llmSettings} />
         ) : (
           // Kanban board with scenes
-          <KanbanBoard
-            initialScenes={project.scenes}
-            projectId={id}
-            comfyImageWorkflows={comfyImageWorkflows}
-            comfyVideoWorkflows={comfyVideoWorkflows}
-            characters={characters}
-          />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {project.storylineConfirmed && project.scenes.length === 0 && (
+              <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-4">
+                <p className="text-sm text-amber-200/90">
+                  Storyline is confirmed but no scene scripts yet. Generate them with Story Muse.
+                </p>
+                <Link
+                  href={`/projects/${id}?generating=scenes&targetScenes=24`}
+                  className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:bg-amber-400 transition-colors"
+                >
+                  Generate scene scripts
+                </Link>
+              </div>
+            )}
+            <KanbanBoard
+              initialScenes={project.scenes}
+              projectId={id}
+              comfyImageWorkflows={comfyImageWorkflows}
+              comfyVideoWorkflows={comfyVideoWorkflows}
+              characters={characters}
+            />
+          </div>
         )}
       </div>
     </div>

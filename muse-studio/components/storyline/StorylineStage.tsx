@@ -344,7 +344,7 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
               onChange={(e) => setMusePrompt(e.target.value)}
               placeholder={`e.g. "A psychological horror set in a fog-covered coastal town. A therapist discovers her patients all share the same recurring nightmare — and she's in it too. Themes of memory, collective trauma, and isolation."`}
               rows={6}
-              className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 placeholder:text-muted-foreground/40 text-sm"
+              className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 placeholder:text-muted-foreground/40 text-sm min-h-[8rem] max-h-[18rem] overflow-y-auto [field-sizing:fixed]"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate();
               }}
@@ -472,12 +472,12 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground/80">Scene breakdown preset</span>{' '}
-                · Choose how many scenes Story Muse should generate from this storyline. For longer films,
-                you can enter a custom scene count.
+                · Choose how many scenes Story Muse should generate (up to 120). For 25+ scenes,
+                long-form generation runs in batches; for 24 or fewer, a single run is used.
               </div>
               <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
                 <div className="flex gap-1.5">
-                  {[5, 8, 12].map((count) => {
+                  {[5, 8, 12, 24, 60].map((count) => {
                     const active = targetScenes === count;
                     return (
                       <button
@@ -511,7 +511,7 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
                       const value = e.target.value;
                       setTargetScenesInput(value);
                       const n = Number.parseInt(value, 10);
-                      if (!Number.isNaN(n) && n > 0 && n <= 120) {
+                      if (!Number.isNaN(n) && n >= 1 && n <= 120) {
                         setTargetScenes(n);
                       }
                     }}
@@ -524,7 +524,7 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
                       setTargetScenesInput(String(next));
                     }}
                     className="h-7 w-20 rounded-full border border-white/15 bg-white/5 px-3 text-[11px] text-foreground/90 placeholder:text-muted-foreground/60 outline-none focus:border-emerald-400/70 focus:ring-1 focus:ring-emerald-500/40"
-                    placeholder="e.g. 24"
+                    placeholder="e.g. 24 or 60"
                   />
                 </div>
               </div>

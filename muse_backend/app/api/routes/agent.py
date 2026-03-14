@@ -131,11 +131,158 @@ async def execute_agent_action(request: AgentExecuteRequest):
     )
 
 
+class GenerateScenesRequest(BaseModel):
+    """Request body for long-form scene generation (targetTotal > 24)."""
+
+    projectId: str
+    targetTotal: int
+    batchSize: int = 24
+    storyline: dict | None = None  # required for long-form; frontend sends from project
+    existingScenes: list[dict] | None = None
+    provider_id: str | None = None
+
+
+class OrchestrateRequest(BaseModel):
+    """Request body for the Supervisor orchestrate endpoint."""
+
+    project: dict
+    goal: str = "next_step"  # next_step | full_pipeline | generate_scenes
+    targetTotal: int | None = None  # for generate_scenes (e.g. 60)
+
+
 class VideoEditorAgentRequest(BaseModel):
     """Request body for the Video Editor Agent."""
 
     project: dict
     mode: str = "SIMPLE_STITCH"
+
+
+async def _generate_scenes_sse(
+    project_id: str,
+    target_total: int,
+    storyline: dict,
+    existing_scenes: list[dict],
+    batch_size: int,
+    provider_id: str | None,
+):
+    """Yield SSE events for long-form scene generation (event: scene, event: batch_done, event: done, event: error)."""
+    event_queue: queue.Queue = queue.Queue()
+
+    def stream_callback(event_type: str, payload: dict) -> None:
+        event_queue.put((event_type, payload))
+
+    def run_graph() -> None:
+        from app.agents.longform_scene_agent import run_longform_scene_graph
+
+        result = run_longform_scene_graph(
+            project_id=project_id,
+            storyline=storyline,
+            target_total=target_total,
+            batch_size=batch_size,
+            existing_scenes=existing_scenes,
+            stream_callback=stream_callback,
+            provider_id=provider_id,
+        )
+        total = len(result.get("all_generated_scenes") or [])
+        event_queue.put(("_done", {"totalScenes": total, "error": result.get("error")}))
+
+    loop = asyncio.get_event_loop()
+    task = loop.run_in_executor(None, run_graph)
+
+    # Send import/generating once
+    yield f"event: import\ndata: {json.dumps({'message': 'Long-form scene generation started'})}\n\n"
+    yield f"event: generating\ndata: {json.dumps({'message': 'Story Muse is writing your scene scripts…'})}\n\n"
+
+    def get_event():
+        try:
+            return event_queue.get(timeout=4.0)
+        except Empty:
+            return ("_ping", {})
+
+    while True:
+        kind, payload = await loop.run_in_executor(None, get_event)
+        if kind == "_ping":
+            yield ": ping\n\n"
+            continue
+        if kind == "_done":
+            yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+            break
+        if kind == "error":
+            yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+            break
+        if kind == "scene":
+            yield f"event: scene\ndata: {json.dumps(payload)}\n\n"
+        elif kind == "batch_done":
+            yield f"event: batch_done\ndata: {json.dumps(payload)}\n\n"
+
+    await task
+
+
+@router.post("/generate-scenes")
+async def generate_scenes_stream(request: GenerateScenesRequest):
+    """
+    Long-form scene generation (targetTotal > 24). Streams SSE events: scene, batch_done, done, error.
+    Frontend should send storyline from project; backend does not write to DB — frontend persists each scene.
+    """
+    if not request.storyline or not request.storyline.get("plotOutline"):
+        raise HTTPException(
+            status_code=400,
+            detail="storyline with plotOutline is required for long-form scene generation.",
+        )
+    return StreamingResponse(
+        _generate_scenes_sse(
+            project_id=request.projectId,
+            target_total=min(request.targetTotal, 120),
+            storyline=request.storyline,
+            existing_scenes=request.existingScenes or [],
+            batch_size=min(request.batchSize, 24),
+            provider_id=request.provider_id,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@router.post("/orchestrate")
+async def orchestrate(request: OrchestrateRequest):
+    """
+    Run the Supervisor graph: route to next task (storyline, script_longform, keyframe, video).
+    Returns JSON with next_task, history, and optional targetTotal when the next step is
+    script_longform (client should then call POST /agent/generate-scenes with that target).
+    """
+    try:
+        from app.agents.supervisor_graph import run_supervisor
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Supervisor graph not available.", "reason": str(e)},
+        )
+
+    goal = request.goal or "next_step"
+    target_total = request.targetTotal if request.targetTotal is not None else None
+    state = run_supervisor(
+        project=request.project,
+        goal=goal,
+        target_total=target_total,
+        thread_id="orchestrate",
+    )
+
+    next_task = state.get("next_task") or "done"
+    history = state.get("history") or []
+    error = state.get("error")
+    state_target = state.get("target_total") or target_total
+
+    response = {
+        "next_task": next_task,
+        "current_phase": state.get("current_phase", ""),
+        "history": history,
+        "error": error,
+    }
+    if next_task == "script_longform" and state_target:
+        response["targetTotal"] = state_target
+        response["message"] = f"Next step: generate {state_target} scenes. Call POST /agent/generate-scenes with targetTotal={state_target}."
+
+    return response
 
 
 @router.post("/video-editor")

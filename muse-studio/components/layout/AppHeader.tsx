@@ -24,6 +24,7 @@ import { dismissSuggestion } from '@/lib/actions/muse-suggestions';
 import { refreshMuseSuggestions } from '@/lib/actions/muse-agent';
 import { updateProject } from '@/lib/actions/projects';
 import { ProjectOverviewSheet } from '@/components/projects/ProjectOverviewSheet';
+import { OrchestrateButton } from '@/components/agent/OrchestrateButton';
 
 // Stable empty array reference to avoid re-creating [] on every render.
 const EMPTY_SUGGESTIONS: MuseSuggestion[] = [];
@@ -176,6 +177,11 @@ export function AppHeader({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {/* Orchestrate / Next step (project view only) */}
+          {isProjectView && projectId && (
+            <OrchestrateButton projectId={projectId} />
           )}
 
           {/* Project overview (project view only) */}
