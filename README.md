@@ -1,103 +1,67 @@
 # Muse Studio — AI Story & Video Workspace
 
-Muse Studio is a local-first workspace for planning, visualizing, and iterating on stories and video concepts.
-It combines:
+Muse Studio is a local-first workspace for planning, visualizing, and iterating on stories and video concepts. It combines:
 
-- A **frontend** (`muse-studio`) with kanban-style scenes, characters, and “Muse” suggestions.
-- A **Python FastAPI backend** (`muse_backend`) that orchestrates LLMs and video/image providers.
-- Tight integration with **ComfyUI** for image and video generation via your own workflows.
+- A **frontend** (`muse-studio`) with kanban-style scenes, characters, and “Muse” suggestions
+- A **Python FastAPI backend** (`muse_backend`) that orchestrates LLMs and video/image providers
+- Tight integration with **ComfyUI** for image and video generation via your own workflows
 
-This README focuses on **installation, configuration, and day‑to‑day usage** of the frontend + backend stack on your machine.
-
-
-New features Added :
-
-2026-03-13:
-
-## Exporting your film with the Video Editor Agent
-
-When all your scene videos are ready, Muse can help you turn them into a full film using the Video Editor Agent. Instead of downloading every clip and editing by hand, you can let the agent assemble a master cut for you.
-
-There are two ways the agent can export your film:
-
-**Simple Stitch**
-Use this when you’re happy with each scene as it is. The agent will:
-
-Take all scenes that are marked as Final.
-Arrange them in story order.
-Join them together into one continuous video.
-This is the fastest and most predictable option.
-
-**Smart Edit**
-Use this when you want the agent to “think” a bit more about your footage. The agent will:
-
-Look at each final scene, listen to its audio, and sample a few key frames.
-Prepare an “edited” version of each scene (today this mostly keeps the full content, but it is designed to get smarter over time).
-Then assemble these edited scenes into the final film.
-Smart Edit is designed as the foundation for future, more intelligent editing (tighter pacing, trimming dead air, etc.).
-In the UI, you’ll be able to choose Simple Stitch or Smart Edit before clicking “Export Full Film By Agent”. After you start the export, Muse shows a progress animation while the agent builds your master video, and then gives you a link to open or download the final film.
-
-## Local LLMs — LM Studio support
-
-Muse Studio now supports **LM Studio** as an additional **local LLM provider**, alongside OpenAI, Ollama, and Claude.
-
-- Run the LM Studio app and enable its **OpenAI-compatible local server**.
-- In `muse_backend/.env`, you can optionally set:
-  - `LMSTUDIO_BASE_URL` (default `http://127.0.0.1:1234`)
-  - `LMSTUDIO_MODEL` (any model id reported by LM Studio’s `/v1/models` endpoint)
-  - `LMSTUDIO_API_KEY` (only if you enabled API auth in LM Studio)
-- In `muse-studio/.env.local`, you can mirror the same base URL for the frontend:
-  - `NEXT_PUBLIC_LMSTUDIO_BASE_URL=http://127.0.0.1:1234`
-- In Muse’s provider settings, choose **LM Studio (Local)** and pick a model from the LM Studio Model dropdown. Story Muse (Ask Muse, storyline tools, scene dialogs, character prompts) will then use LM Studio instead of a cloud API or Ollama.
-
-
-### Disabling \"thinking\" output for Qwen models in LM Studio
-
-Some LM Studio models support **\"thinking\"** (they stream internal reasoning text in addition to the final answer). Muse Studio will display whatever text the model returns, so if thinking is enabled, those reasoning traces can appear in your Ask Muse / Storyline / Scene prompts.
-
-If you prefer **not** to see thinking content, you can disable it per‑model inside LM Studio:
-
-1. Open **LM Studio → My Models**.
-2. Select your Qwen model.
-3. In the right panel, choose the **Inference** tab.
-4. Scroll down to **Prompt Template (Jinja)**.
-5. Add this line at the **very beginning** of the template:
-
-   ```jinja
-   {%- set enable_thinking = false %}
-   ```
-
-6. Save the template and restart inference for that model if needed.
-
-After this change, LM Studio will stop emitting thinking text for that model, and Muse Studio will only receive and display the final answer content.
-
+This README covers **installation, configuration, and day‑to‑day usage** of the frontend and backend on your machine.
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites](#1-prerequisites)
-2. [Clone / Open the Project](#2-clone--open-the-project)
-3. [Frontend Setup — muse-studio (Next.js)](#3-frontend-setup--muse-studio-nextjs)
-4. [Backend Setup — muse_backend (Python / FastAPI)](#4-backend-setup--muse_backend-python--fastapi)
-   - [4.1 Create the virtual environment](#41-create-the-virtual-environment)
-   - [4.2 Activate the virtual environment](#42-activate-the-virtual-environment)
-   - [4.3 Install PyTorch with CUDA](#43-install-pytorch-with-cuda)
-   - [4.4 Install ML dependencies](#44-install-ml-dependencies)
-   - [4.5 Install LTX-Video 2 core](#45-install-ltx-video-2-core)
-   - [4.6 Install GGUF support (optional)](#46-install-gguf-support-optional)
-   - [4.7 Install remaining dependencies](#47-install-remaining-dependencies)
-   - [4.8 Configure environment variables](#48-configure-environment-variables)
-5. [ComfyUI — Image & Video Generation](#5-comfyui--image--video-generation)
-6. [Running the Stack](#6-running-the-stack)
-7. [Verify Everything Works](#7-verify-everything-works)
-8. [Quick Command Reference](#8-quick-command-reference)
-9. [Upgrading PyTorch](#9-upgrading-pytorch)
-10. [Troubleshooting](#10-troubleshooting)
+1. [What's New](#1-whats-new)
+2. [Prerequisites](#2-prerequisites)
+3. [Clone / Open the Project](#3-clone--open-the-project)
+4. [Frontend Setup — muse-studio (Next.js)](#4-frontend-setup--muse-studio-nextjs)
+5. [Backend Setup — muse_backend (Python / FastAPI)](#5-backend-setup--muse_backend-python--fastapi)
+6. [ComfyUI — Image & Video Generation](#6-comfyui--image--video-generation)
+7. [Running the Stack](#7-running-the-stack)
+8. [Using Muse Agent (UI Overview)](#8-using-muse-agent-ui-overview)
+9. [Verify Everything Works](#9-verify-everything-works)
+10. [Quick Command Reference](#10-quick-command-reference)
+11. [Upgrading PyTorch](#11-upgrading-pytorch)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Publishing on GitHub](#13-publishing-on-github)
 
 ---
 
-## 1. Prerequisites
+## 1. What's New
+
+### Exporting your film with the Video Editor Agent (2026-03-13)
+
+When all your scene videos are ready, Muse can help you turn them into a full film using the **Video Editor Agent**. You can let the agent assemble a master cut instead of downloading every clip and editing by hand.
+
+- **Simple Stitch** — Use when you’re happy with each scene as it is. The agent takes all scenes marked as **Final**, arranges them in story order, and joins them into one continuous video. Fast and predictable.
+- **Smart Edit** — The agent looks at each final scene, listens to audio, and samples key frames; it prepares an edited version of each scene (today mostly full content, designed to get smarter over time), then assembles them into the final film. Good foundation for future pacing and trimming.
+
+In the UI, choose **Simple Stitch** or **Smart Edit** before clicking **Export Full Film By Agent**. Muse shows progress and then gives you a link to open or download the final film.
+
+### Local LLMs — LM Studio support
+
+Muse Studio supports **LM Studio** as a local LLM provider alongside OpenAI, Ollama, and Claude.
+
+- Run the **LM Studio** app and enable its **OpenAI-compatible local server**.
+- In `muse_backend/.env` (optional):
+  - `LMSTUDIO_BASE_URL` (default `http://127.0.0.1:1234`)
+  - `LMSTUDIO_MODEL` (model id from LM Studio’s `/v1/models`)
+  - `LMSTUDIO_API_KEY` (if you enabled API auth in LM Studio)
+- In `muse-studio/.env.local`: `NEXT_PUBLIC_LMSTUDIO_BASE_URL=http://127.0.0.1:1234`
+- In Muse’s provider settings, choose **LM Studio (Local)** and pick a model. Story Muse (Ask Muse, storyline, scene dialogs) will use LM Studio instead of cloud or Ollama.
+
+**Disabling “thinking” output for Qwen models in LM Studio**  
+Some models stream internal reasoning (“thinking”) plus the final answer. To hide that in Muse:
+
+1. In **LM Studio → My Models**, select your Qwen model.
+2. Open the **Inference** tab and find **Prompt Template (Jinja)**.
+3. Add at the **very beginning** of the template: `{%- set enable_thinking = false %}`
+4. Save and restart inference for that model. Muse will then only show the final answer.
+
+---
+
+## 2. Prerequisites
 
 Install these tools before starting.
 
@@ -151,7 +115,7 @@ nvidia-smi
 
 ---
 
-## 2. Clone / Open the Project
+## 3. Clone / Open the Project
 
 ```bash
 git clone https://github.com/benjiyaya/Muse-Studio.git
@@ -170,7 +134,7 @@ Image and video generation run through **ComfyUI**; no local model folder is req
 
 ---
 
-## 2.1 Quick Start (TL;DR)
+### 3.1 Quick Start (TL;DR)
 
 1. **Clone & install**
    - Backend:
@@ -223,7 +187,7 @@ Image and video generation run through **ComfyUI**; no local model folder is req
 
 ---
 
-## 3. Frontend Setup — muse-studio (Next.js)
+## 4. Frontend Setup — muse-studio (Next.js)
 
 ### Windows (CMD or PowerShell)
 
@@ -267,11 +231,11 @@ npm run dev
 
 ---
 
-## 4. Backend Setup — muse_backend (Python / FastAPI)
+## 5. Backend Setup — muse_backend (Python / FastAPI)
 
 All commands below are run from inside the `muse_backend/` directory unless stated otherwise.
 
-### 4.1 Create the virtual environment
+### 5.1 Create the virtual environment
 
 The `.venv` isolates AI model dependencies (especially CUDA PyTorch) from your
 system Python. **Never skip this step.**
@@ -299,7 +263,7 @@ python3 -m venv .venv
 
 ---
 
-### 4.2 Activate the virtual environment
+### 5.2 Activate the virtual environment
 
 You must activate the venv **every time you open a new terminal**.
 Your prompt will show `(.venv)` when active.
@@ -333,7 +297,7 @@ deactivate
 
 ---
 
-### 4.3 Install PyTorch with CUDA
+### 5.3 Install PyTorch with CUDA
 
 > **Critical:** Do NOT install torch from `requirements.txt` or plain `pip install torch`.
 > Both give a CPU-only build with no GPU support. Always use the `--index-url` flag.
@@ -385,7 +349,7 @@ GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
 
 ---
 
-### 4.4 Install remaining dependencies
+### 5.4 Install remaining dependencies
 
 ```
 pip install -r requirements.txt
@@ -395,7 +359,7 @@ This installs FastAPI, Uvicorn, OpenAI SDK, and other non-GPU packages.
 
 ---
 
-### 4.8 Configure environment variables
+### 5.5 Configure environment variables
 
 #### Windows (CMD)
 
@@ -442,7 +406,7 @@ RUNWAY_API_KEY=
 
 ---
 
-## 5. ComfyUI — Image & Video Generation
+## 6. ComfyUI — Image & Video Generation
 
 Image and video generation are handled by **ComfyUI**. Run ComfyUI separately and integrate its workflows into Muse Studio:
 
@@ -458,7 +422,7 @@ You do **not** need a `models/` folder in this repo — model weights and pipeli
 
 ---
 
-## 6. Running the Stack
+## 7. Running the Stack
 
 Both services must be running simultaneously. Use two separate terminal windows.
 
@@ -515,7 +479,7 @@ Frontend starts at **http://localhost:3000**
 
 ---
 
-## 7. Using Muse Agent (UI Overview)
+## 8. Using Muse Agent (UI Overview)
 
 Once both backend and frontend are running and ComfyUI is configured:
 
@@ -549,7 +513,7 @@ Once both backend and frontend are running and ComfyUI is configured:
 
 ---
 
-## 8. Verify Everything Works
+## 9. Verify Everything Works
 
 ### Check backend health
 
@@ -596,7 +560,7 @@ python -c "from ltx_core.model.upsampler import upsample_video; print('ltx_core 
 
 ---
 
-## 9. Quick Command Reference
+## 10. Quick Command Reference
 
 | Task | Windows CMD | Windows PowerShell | Linux / macOS |
 |---|---|---|---|
@@ -611,7 +575,7 @@ python -c "from ltx_core.model.upsampler import upsample_video; print('ltx_core 
 
 ---
 
-## 10. Upgrading PyTorch
+## 11. Upgrading PyTorch
 
 When a new PyTorch version is released, upgrade with the same CUDA index URL.
 Do **not** use plain `pip install torch --upgrade` — that installs a CPU build.
@@ -630,7 +594,7 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 ### `CUDA available: False` after install
 
@@ -676,7 +640,7 @@ Visual Studio C++ Build Tools are missing. Install them first (one-time):
 winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
 ```
 
-After it finishes, **close and reopen your terminal**, then retry from Step B in section 4.6.
+After it finishes, **close and reopen your terminal**, then retry the llama-cpp-python install step in **Section 5** (Backend Setup).
 
 ---
 
@@ -741,7 +705,7 @@ lsof -ti:8000 | xargs kill -9
 
 ---
 
-## 12. Publishing on GitHub
+## 13. Publishing on GitHub
 
 To publish this app on GitHub:
 
@@ -765,6 +729,3 @@ To publish this app on GitHub:
 4. **Optional:** Add a repository description, topics (e.g. `nextjs`, `fastapi`, `comfyui`, `ai`), and a link to this README in the repo “About” section.
 
 This project is licensed under the MIT License — see [LICENSE](LICENSE).
-#   M u s e - S t u d i o 
- 
- "# Muse-Studio" 
