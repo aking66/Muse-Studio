@@ -288,8 +288,11 @@ export async function updateProject(
 export async function confirmStoryline(
   id: string,
   storyline: StorylineContent,
+  options?: { storylineSource?: Project['storylineSource'] },
 ): Promise<void> {
   const now = new Date().toISOString();
+  const storylineSource = options?.storylineSource ?? 'MUSE_GENERATED';
+
   db.prepare(`
     UPDATE projects SET
       storyline_logline = ?,
@@ -297,6 +300,7 @@ export async function confirmStoryline(
       storyline_characters = ?,
       storyline_themes = ?,
       storyline_genre = ?,
+      storyline_source = ?,
       storyline_confirmed = 1,
       current_stage = 'SCRIPT',
       updated_at = ?
@@ -307,6 +311,7 @@ export async function confirmStoryline(
     JSON.stringify(storyline.characters),
     JSON.stringify(storyline.themes),
     storyline.genre ?? null,
+    storylineSource,
     now,
     id,
   );
@@ -314,11 +319,15 @@ export async function confirmStoryline(
   revalidatePath(`/projects/${id}`);
   revalidatePath('/projects');
 
-  // Fire-and-forget generation of story-level Muse suggestions.
-  generateStorySuggestions(id).catch((err) => {
-    // eslint-disable-next-line no-console
-    console.error('Failed to generate story suggestions', err);
-  });
+  // Defer so scene generation (/api/generate/scenes) can start first on the same LLM — manual
+  // storylines are often huge and trigger a heavy prompt right when the user lands on generation.
+  const STORY_SUGGESTIONS_DELAY_MS = 25_000;
+  setTimeout(() => {
+    generateStorySuggestions(id).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to generate story suggestions', err);
+    });
+  }, STORY_SUGGESTIONS_DELAY_MS);
 }
 
 /** Delete a project and all its cascaded data. */

@@ -123,6 +123,9 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
   const [promoteLoadingData, setPromoteLoadingData] = useState(false);
   const [promoteSubmitting, setPromoteSubmitting] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
+  /** When true, project comes from dialog dropdown (no sidebar selection). */
+  const [promoteUsePickedProject, setPromoteUsePickedProject] = useState(false);
+  const [promotePickedProjectId, setPromotePickedProjectId] = useState('');
 
   const [playgroundLibPicker, setPlaygroundLibPicker] = useState<{
     nodeId: string;
@@ -351,78 +354,88 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
     return true;
   }
 
-  async function openPromoteKeyframe() {
-    if (!chatProjectId || !resultPath) return;
-    setPromoteError(null);
-    setPromoteMode('keyframe');
-    setPromoteOpen(true);
+  async function loadPromoteContext(
+    projectId: string,
+    mode: 'keyframe' | 'character' | 'video',
+  ): Promise<void> {
     setPromoteLoadingData(true);
     try {
-      const p = await getProjectById(chatProjectId);
-      const sc = (p?.scenes ?? []).map((s) => ({
-        id: s.id,
-        title: s.title,
-        sceneNumber: s.sceneNumber,
-      }));
-      setPromoteScenes(sc);
-      setPromoteSceneId(sc[0]?.id ?? '');
+      if (mode === 'character') {
+        const chars = await listCharacters(projectId);
+        setPromoteCharacters(chars.map((c) => ({ id: c.id, name: c.name })));
+        setPromoteCharacterId(chars[0]?.id ?? '');
+        setPromoteCharKind('FACE');
+      } else {
+        const p = await getProjectById(projectId);
+        const sc = (p?.scenes ?? []).map((s) => ({
+          id: s.id,
+          title: s.title,
+          sceneNumber: s.sceneNumber,
+        }));
+        setPromoteScenes(sc);
+        setPromoteSceneId(sc[0]?.id ?? '');
+      }
     } finally {
       setPromoteLoadingData(false);
     }
+  }
+
+  async function openPromoteKeyframe() {
+    if (!chatProjectId || !resultPath) return;
+    setPromoteUsePickedProject(false);
+    setPromoteError(null);
+    setPromoteMode('keyframe');
+    setPromoteOpen(true);
+    await loadPromoteContext(chatProjectId, 'keyframe');
   }
 
   async function openPromoteCharacter() {
     if (!chatProjectId || !resultPath) return;
+    setPromoteUsePickedProject(false);
     setPromoteError(null);
     setPromoteMode('character');
     setPromoteOpen(true);
-    setPromoteLoadingData(true);
-    try {
-      const chars = await listCharacters(chatProjectId);
-      setPromoteCharacters(chars.map((c) => ({ id: c.id, name: c.name })));
-      setPromoteCharacterId(chars[0]?.id ?? '');
-      setPromoteCharKind('FACE');
-    } finally {
-      setPromoteLoadingData(false);
-    }
+    await loadPromoteContext(chatProjectId, 'character');
   }
 
   async function openPromoteVideo() {
     if (!chatProjectId || !resultPath) return;
+    setPromoteUsePickedProject(false);
     setPromoteError(null);
     setPromoteMode('video');
     setPromoteOpen(true);
-    setPromoteLoadingData(true);
-    try {
-      const p = await getProjectById(chatProjectId);
-      const sc = (p?.scenes ?? []).map((s) => ({
-        id: s.id,
-        title: s.title,
-        sceneNumber: s.sceneNumber,
-      }));
-      setPromoteScenes(sc);
-      setPromoteSceneId(sc[0]?.id ?? '');
-    } finally {
-      setPromoteLoadingData(false);
-    }
+    await loadPromoteContext(chatProjectId, 'video');
+  }
+
+  /** Assign output when no project is selected in the right panel — pick project in the dialog. */
+  async function openAssignToProject(mode: 'keyframe' | 'character' | 'video') {
+    if (!resultPath || projects.length === 0) return;
+    const firstId = projects[0]!.id;
+    setPromoteUsePickedProject(true);
+    setPromotePickedProjectId(firstId);
+    setPromoteError(null);
+    setPromoteMode(mode);
+    setPromoteOpen(true);
+    await loadPromoteContext(firstId, mode);
   }
 
   async function handlePromoteConfirm() {
-    if (!chatProjectId || !resultPath || !promoteMode) return;
+    const projectId = promoteUsePickedProject ? promotePickedProjectId : chatProjectId;
+    if (!projectId || !resultPath || !promoteMode) return;
     setPromoteSubmitting(true);
     setPromoteError(null);
     try {
       if (promoteMode === 'keyframe') {
         if (!promoteSceneId) throw new Error('Pick a scene');
         await promotePlaygroundAssetToKeyframe({
-          projectId: chatProjectId,
+          projectId,
           sceneId: promoteSceneId,
           sourceRelPath: resultPath,
         });
       } else if (promoteMode === 'character') {
         if (!promoteCharacterId) throw new Error('Pick a character');
         await promotePlaygroundAssetToCharacterImage({
-          projectId: chatProjectId,
+          projectId,
           characterId: promoteCharacterId,
           sourceRelPath: resultPath,
           kind: promoteCharKind,
@@ -430,13 +443,14 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
       } else if (promoteMode === 'video') {
         if (!promoteSceneId) throw new Error('Pick a scene');
         await promotePlaygroundVideoToScene({
-          projectId: chatProjectId,
+          projectId,
           sceneId: promoteSceneId,
           sourceRelPath: resultPath,
         });
       }
       setPromoteOpen(false);
       setPromoteMode(null);
+      setPromoteUsePickedProject(false);
       router.refresh();
     } catch (e) {
       setPromoteError(e instanceof Error ? e.message : 'Promotion failed');
@@ -846,7 +860,7 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
                     </Button>
                   </div>
                 )}
-                {chatProjectId && resultPath && (
+                {resultPath && chatProjectId && (
                   <div className="flex max-w-lg flex-wrap justify-center gap-2">
                     {kind === 'image' && (
                       <>
@@ -882,6 +896,53 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
                       </Button>
                     )}
                   </div>
+                )}
+                {resultPath && !chatProjectId && projects.length > 0 && (
+                  <div className="flex max-w-lg flex-col items-center gap-2">
+                    <p className="text-center text-[11px] text-muted-foreground">
+                      No project selected on the right — pick one here to attach this output to a project.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {kind === 'image' && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="text-xs"
+                            onClick={() => void openAssignToProject('keyframe')}
+                          >
+                            Assign as keyframe…
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => void openAssignToProject('character')}
+                          >
+                            Add to project character…
+                          </Button>
+                        </>
+                      )}
+                      {kind === 'video' && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="text-xs"
+                          onClick={() => void openAssignToProject('video')}
+                        >
+                          Assign video to scene…
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {resultPath && !chatProjectId && projects.length === 0 && (
+                  <p className="max-w-md text-center text-[11px] text-muted-foreground">
+                    Create a project under Projects to attach this file to a scene or character.
+                  </p>
                 )}
               </div>
             )}
@@ -1035,21 +1096,46 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
           if (!open) {
             setPromoteMode(null);
             setPromoteError(null);
+            setPromoteUsePickedProject(false);
+            setPromotePickedProjectId('');
           }
         }}
       >
         <DialogContent className="border-white/10 bg-[oklch(0.13_0.012_264)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base">
-              {promoteMode === 'keyframe' && 'Attach image as keyframe'}
-              {promoteMode === 'character' && 'Add image to character'}
-              {promoteMode === 'video' && 'Set video on scene'}
+              {promoteMode === 'keyframe' &&
+                (promoteUsePickedProject ? 'Assign image as keyframe' : 'Attach image as keyframe')}
+              {promoteMode === 'character' &&
+                (promoteUsePickedProject ? 'Add image to project character' : 'Add image to character')}
+              {promoteMode === 'video' &&
+                (promoteUsePickedProject ? 'Assign video to scene' : 'Set video on scene')}
             </DialogTitle>
           </DialogHeader>
           {promoteLoadingData ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
             <div className="space-y-3 text-sm">
+              {promoteUsePickedProject && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Project</label>
+                  <select
+                    value={promotePickedProjectId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setPromotePickedProjectId(id);
+                      if (promoteMode) void loadPromoteContext(id, promoteMode);
+                    }}
+                    className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs"
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {(promoteMode === 'keyframe' || promoteMode === 'video') && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Scene</label>
@@ -1132,6 +1218,7 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
               disabled={
                 promoteSubmitting ||
                 promoteLoadingData ||
+                (promoteUsePickedProject && !promotePickedProjectId) ||
                 (promoteMode === 'character' && promoteCharacters.length === 0) ||
                 ((promoteMode === 'keyframe' || promoteMode === 'video') && promoteScenes.length === 0)
               }

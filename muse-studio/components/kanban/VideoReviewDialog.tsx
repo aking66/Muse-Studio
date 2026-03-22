@@ -122,12 +122,12 @@ export function VideoReviewDialog({
   }
 
   return (
-    /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+      role="dialog"
+      aria-modal="true"
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto" aria-hidden />
 
       {/* Panel */}
       <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/10 bg-[oklch(0.13_0.01_264)] shadow-2xl shadow-black/60 flex flex-col overflow-hidden">

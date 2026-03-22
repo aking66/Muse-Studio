@@ -221,6 +221,8 @@ export async function promotePlaygroundVideoToScene(input: {
   const newRel = copyWithinOutputs(sourceRelPath, `drafts/${projectId}/library`);
   const videoUrl = `/api/outputs/${newRel}`;
   await updateScene(sceneId, { videoUrl });
+  // Match in-app generation: video is ready for review, not still "script only"
+  await updateSceneStatus(sceneId, 'PENDING_APPROVAL');
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath('/playground');

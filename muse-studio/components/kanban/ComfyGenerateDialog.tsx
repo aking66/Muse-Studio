@@ -429,8 +429,12 @@ export function ComfyGenerateDialog({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" aria-hidden />
       <div className="relative z-10 w-full max-w-[1024] max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-[oklch(0.13_0.01_264)] shadow-2xl shadow-black/50">
 
         {/* Header */}
@@ -1046,12 +1050,8 @@ export function ComfyGenerateDialog({
           </div>
         ) : null}
 
-        {/* Footer */}
-        <div className="shrink-0 flex items-center justify-between gap-3 border-t border-white/8 px-5 py-3">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            {phase === 'result' ? 'Done' : 'Cancel'}
-          </Button>
-
+        {/* Footer — dismiss only via header X */}
+        <div className="shrink-0 flex items-center justify-end gap-3 border-t border-white/8 px-5 py-3">
           <div className="flex items-center gap-2">
             {/* Hint about optional empty fields */}
             {emptyOptionalCount > 0 && (phase === 'idle') && (

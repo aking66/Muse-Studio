@@ -24,6 +24,9 @@ muse-studio/outputs/**
 
 # Local IDE (machine-specific)
 .cursor/
+.github/
+.skills/
+.vscode/
 
 # Logs
 *.log

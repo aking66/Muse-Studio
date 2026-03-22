@@ -30,6 +30,7 @@ export function ProjectOverviewSheet({ project, open, onOpenChange }: ProjectOve
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
+        dismissible={false}
         className="w-[420px] max-w-[95vw] border-white/8 bg-[oklch(0.13_0.012_264)] p-0 flex flex-col"
       >
         <SheetHeader className="border-b border-white/8 px-5 py-4 shrink-0">

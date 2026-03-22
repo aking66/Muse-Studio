@@ -159,7 +159,7 @@ export default async function ProjectKanbanPage({ params, searchParams }: PagePr
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {isGeneratingScenes ? (
           // Scene generation overlay — Story Muse writes scene scripts
           <SceneGenerationOverlay projectId={id} targetScenes={targetScenesNumber} />
@@ -170,15 +170,24 @@ export default async function ProjectKanbanPage({ params, searchParams }: PagePr
           // Kanban board with scenes
           <div className="flex flex-1 flex-col overflow-hidden">
             {project.storylineConfirmed && project.scenes.length === 0 && (
-              <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-4">
+              <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-amber-200/90">
-                  Storyline is confirmed but no scene scripts yet. Generate them with Story Muse.
+                  {project.storylineSource === 'MANUAL' ? (
+                    <>
+                      Storyline is saved. Add scenes on the board below (Script of Scenes), or run Story Muse
+                      to draft scripts from your outline.
+                    </>
+                  ) : (
+                    <>Storyline is confirmed but no scene scripts yet. Generate them with Story Muse.</>
+                  )}
                 </p>
                 <Link
                   href={`/projects/${id}?generating=scenes&targetScenes=24`}
-                  className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:bg-amber-400 transition-colors"
+                  className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-black hover:bg-amber-400 transition-colors text-center"
                 >
-                  Generate scene scripts
+                  {project.storylineSource === 'MANUAL'
+                    ? 'Generate scene drafts (optional)'
+                    : 'Generate scene scripts'}
                 </Link>
               </div>
             )}

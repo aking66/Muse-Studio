@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Workflow, ChevronRight, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { ComfyWorkflowSummary } from '@/lib/actions/comfyui';
 import type { Scene } from '@/lib/types';
 
@@ -39,8 +38,12 @@ export function ComfyWorkflowSelectDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" aria-hidden />
       <div className="relative z-10 w-[480px] max-h-[80vh] flex flex-col rounded-2xl border border-white/10 bg-[oklch(0.13_0.01_264)] shadow-2xl shadow-black/50">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
@@ -96,13 +99,6 @@ export function ComfyWorkflowSelectDialog({
               </button>
             ))
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-white/8 px-5 py-3">
-          <Button variant="ghost" size="sm" onClick={onClose} className="w-full">
-            Cancel
-          </Button>
         </div>
       </div>
     </div>

@@ -98,13 +98,14 @@ export function AddSceneDialog({
   const canSubmit = title.trim() && heading.trim() && description.trim();
 
   return (
-    // Backdrop
+    // Modal root: backdrop does not dismiss — use header X only.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-scene-dialog-title"
     >
-      {/* Dark overlay */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto" aria-hidden />
 
       {/* Dialog panel */}
       <div className="relative z-10 w-full max-w-lg rounded-2xl border border-white/12 bg-[oklch(0.13_0.012_264)] shadow-2xl shadow-black/60 flex flex-col max-h-[90vh]">
@@ -116,7 +117,9 @@ export function AddSceneDialog({
               <Clapperboard className="h-4 w-4 text-blue-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold">Add Scene</h2>
+              <h2 id="add-scene-dialog-title" className="text-sm font-semibold">
+                Add Scene
+              </h2>
               <p className="text-xs text-muted-foreground/60">
                 Scene #{String(nextSceneNumber).padStart(2, '0')} · Script of Scenes
               </p>
@@ -250,17 +253,7 @@ export function AddSceneDialog({
             <p className="text-xs text-muted-foreground/40">
               <span className="text-red-400">*</span> Required fields
             </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleClose}
-                disabled={isPending}
-                className="h-8 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </Button>
+            <div className="flex items-center justify-end gap-2">
               <Button
                 type="submit"
                 size="sm"

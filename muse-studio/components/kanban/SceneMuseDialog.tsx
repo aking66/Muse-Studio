@@ -272,11 +272,10 @@ export function SceneMuseDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
+      role="dialog"
+      aria-modal="true"
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto" aria-hidden />
 
       {/* Dialog panel */}
       <div className="relative z-10 w-full max-w-[520px] rounded-2xl border border-white/12 bg-[oklch(0.13_0.012_264)] shadow-2xl shadow-black/60 flex flex-col max-h-[88vh]">

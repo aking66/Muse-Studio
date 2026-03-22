@@ -12,6 +12,8 @@ import {
   Tag,
   AlignLeft,
   XCircle,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,7 +24,10 @@ import { useStoryMuse } from '@/hooks/useStoryMuse';
 
 interface StorylineStageProps {
   project: Project;
-  onConfirm?: (storyline: StorylineContent, options?: { targetScenes: number }) => Promise<void> | void;
+  onConfirm?: (
+    storyline: StorylineContent,
+    options?: { targetScenes: number; storylineSource?: 'MANUAL' | 'MUSE_GENERATED' },
+  ) => Promise<void> | void;
   llmSettings?: LLMSettings;
 }
 
@@ -91,20 +96,22 @@ function parseStorylineText(raw: string): StorylineContent {
   };
 }
 
-const DEMO_STORYLINE: StorylineContent = {
-  logline:
-    'In a coastal town where fog never lifts, a therapist begins to suspect her patients\' shared nightmares are not dreams at all — but memories of something that hasn\'t happened yet.',
-  plotOutline:
-    'Dr. Elise Maren moves to the remote town of Hallow Bay after a breakdown. Her new patients all describe the same recurring nightmare: standing at the edge of a cliff at dawn, watching someone fall. As Elise digs deeper, the line between her patients\' inner worlds and the town\'s hidden history begins to collapse — and she realizes she has been in the nightmare too.',
-  characters: [
-    'Dr. Elise Maren — Therapist protagonist, haunted by her own past',
-    'Mayor Callum Voss — Charming, deeply unsettling town leader',
-    'Nora Heald — Patient, the first to recognize Elise from the dream',
-    'The Figure — A recurring presence seen in all the patients\' nightmares',
-  ],
-  themes: ['Memory vs reality', 'Collective trauma', 'The unreliable mind', 'Isolation'],
-  genre: 'Psychological horror / mystery',
-};
+/** Build storyline from manual list fields (one array entry = one character / one theme). */
+function manualDraftToStoryline(fields: {
+  logline: string;
+  plotOutline: string;
+  characters: string[];
+  themes: string[];
+  genre: string;
+}): StorylineContent {
+  return {
+    logline: fields.logline.trim() || undefined,
+    plotOutline: fields.plotOutline.trim(),
+    characters: fields.characters.map((c) => c.trim()).filter(Boolean),
+    themes: fields.themes.map((t) => t.trim()).filter(Boolean),
+    genre: fields.genre.trim() || undefined,
+  };
+}
 
 export function StorylineStage({ project, onConfirm, llmSettings }: StorylineStageProps) {
   const [selectedMethod, setSelectedMethod] = useState<InputMethod | null>(null);
@@ -112,10 +119,18 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
   const [storyline, setStoryline] = useState<StorylineContent | null>(
     project.storyline ?? null,
   );
-  const [editingSection, setEditingSection] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [targetScenes, setTargetScenes] = useState<number>(8);
   const [targetScenesInput, setTargetScenesInput] = useState<string>('8');
+  const [manualLogline, setManualLogline] = useState('');
+  const [manualPlotOutline, setManualPlotOutline] = useState('');
+  /** Each string = one character card (name, role, notes — any length). */
+  const [manualCharacterBlocks, setManualCharacterBlocks] = useState<string[]>(['']);
+  /** Each string = one theme tag. */
+  const [manualThemeRows, setManualThemeRows] = useState<string[]>(['']);
+  const [manualGenre, setManualGenre] = useState('');
+  /** How the current draft was produced — passed on confirm for DB + downstream behavior. */
+  const [storylineOrigin, setStorylineOrigin] = useState<'manual' | 'muse' | null>(null);
 
   const storyMuse = useStoryMuse();
   const isGenerating = storyMuse.isGenerating;
@@ -139,13 +154,17 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
 
     if (error || !raw) return; // Error is displayed inline
 
+    setStorylineOrigin('muse');
     setStoryline(parseStorylineText(raw));
   }
 
   async function handleConfirm() {
     if (!storyline || isConfirming) return;
     setIsConfirming(true);
-    await onConfirm?.(storyline, { targetScenes });
+    await onConfirm?.(storyline, {
+      targetScenes,
+      storylineSource: storylineOrigin === 'manual' ? 'MANUAL' : 'MUSE_GENERATED',
+    });
     // page navigates away — no need to reset
   }
 
@@ -380,9 +399,12 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
 
   // Manual entry — show a blank storyline form
   if (selectedMethod === 'manual' && !storyline) {
+    const manualTextareaClass =
+      'resize-none [field-sizing:fixed] overflow-y-auto bg-white/5 border-white/10 focus:border-violet-500/50 text-sm';
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-        <div className="w-full max-w-2xl">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-10">
+          <div className="mx-auto w-full max-w-2xl pb-10">
           <button
             onClick={() => setSelectedMethod(null)}
             className="mb-6 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -394,23 +416,155 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Logline</label>
-              <Textarea placeholder="One sentence that captures your film's core premise…" rows={2} className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 text-sm" />
+              <Textarea
+                value={manualLogline}
+                onChange={(e) => setManualLogline(e.target.value)}
+                placeholder="One sentence that captures your film's core premise…"
+                rows={2}
+                className={cn(manualTextareaClass, 'min-h-[3.25rem] max-h-32')}
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Plot Outline</label>
-              <Textarea placeholder="Describe the story arc — beginning, middle, end…" rows={5} className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 text-sm" />
+              <Textarea
+                value={manualPlotOutline}
+                onChange={(e) => setManualPlotOutline(e.target.value)}
+                placeholder="Describe the story arc — beginning, middle, end…"
+                rows={5}
+                className={cn(manualTextareaClass, 'min-h-[7.5rem] max-h-[min(40vh,18rem)]')}
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <label className="block text-xs font-medium text-muted-foreground">Characters</label>
+                <p className="text-[11px] text-muted-foreground/80 max-w-sm text-right">
+                  Use <span className="text-foreground/70">Add character</span> for each role. One block = one person in scene generation.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {manualCharacterBlocks.map((block, i) => (
+                  <div
+                    key={`char-${i}`}
+                    className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-blue-400/90">
+                        Character {i + 1}
+                      </span>
+                      {manualCharacterBlocks.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setManualCharacterBlocks((prev) => prev.filter((_, j) => j !== i))
+                          }
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-red-500/15 hover:text-red-300 transition-colors"
+                          aria-label={`Remove character ${i + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <Textarea
+                      value={block}
+                      onChange={(e) =>
+                        setManualCharacterBlocks((prev) =>
+                          prev.map((c, j) => (j === i ? e.target.value : c)),
+                        )
+                      }
+                      placeholder="Name, role, motivation, arc — as much as you want for this character…"
+                      rows={4}
+                      className={cn(manualTextareaClass, 'min-h-[5.5rem] max-h-[min(32vh,14rem)]')}
+                    />
+                  </div>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed border-white/15 bg-transparent hover:bg-white/5"
+                onClick={() => setManualCharacterBlocks((prev) => [...prev, ''])}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add character
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <label className="block text-xs font-medium text-muted-foreground">Themes (optional)</label>
+                <p className="text-[11px] text-muted-foreground/80 max-w-xs text-right">
+                  One row per theme. <span className="text-foreground/70">Add theme</span> for more.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {manualThemeRows.map((row, i) => (
+                  <div key={`theme-${i}`} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={row}
+                      onChange={(e) =>
+                        setManualThemeRows((prev) =>
+                          prev.map((t, j) => (j === i ? e.target.value : t)),
+                        )
+                      }
+                      placeholder={i === 0 ? 'e.g. Time as debt' : `Theme ${i + 1}`}
+                      className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-violet-500/50"
+                    />
+                    {manualThemeRows.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setManualThemeRows((prev) => prev.filter((_, j) => j !== i))}
+                        className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-red-500/15 hover:text-red-300 transition-colors"
+                        aria-label={`Remove theme ${i + 1}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed border-white/15 bg-transparent hover:bg-white/5"
+                onClick={() => setManualThemeRows((prev) => [...prev, ''])}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add theme
+              </Button>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Characters</label>
-              <Textarea placeholder="List your main characters and their roles…" rows={3} className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 text-sm" />
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Genre (optional)</label>
+              <input
+                type="text"
+                value={manualGenre}
+                onChange={(e) => setManualGenre(e.target.value)}
+                placeholder="e.g. Sci-fi thriller"
+                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-violet-500/50"
+              />
             </div>
             <Button
-              onClick={() => setStoryline(DEMO_STORYLINE)}
+              onClick={() => {
+                setStorylineOrigin('manual');
+                setStoryline(
+                  manualDraftToStoryline({
+                    logline: manualLogline,
+                    plotOutline: manualPlotOutline,
+                    characters: manualCharacterBlocks,
+                    themes: manualThemeRows,
+                    genre: manualGenre,
+                  }),
+                );
+              }}
+              disabled={!manualPlotOutline.trim()}
               className="w-full bg-violet-600 hover:bg-violet-500 font-medium gap-2 h-11"
             >
               <PenLine className="h-4 w-4" />
               Save & Preview Storyline
             </Button>
+          </div>
           </div>
         </div>
       </div>
@@ -419,6 +573,8 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
 
   // Storyline review & confirm view
   if (storyline) {
+    const isManualStoryline = storylineOrigin === 'manual';
+
     return (
       <div className="flex flex-1 flex-col overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -451,7 +607,9 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  Confirm &amp; Proceed to Scripts
+                  {isManualStoryline
+                    ? 'Confirm & Open Scene Board'
+                    : 'Confirm & Proceed to Scripts'}
                 </>
               )}
             </Button>
@@ -464,71 +622,83 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-emerald-300">Review your storyline, then confirm</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Confirming locks this storyline and enables Story Muse to create scene scripts.
-                  You can still edit before confirming.
+                  {isManualStoryline ? (
+                    <>
+                      Confirming saves your storyline and opens the scene board with no auto-generated
+                      scripts—add cards and write scenes yourself. You can still ask Story Muse for draft
+                      scripts later from the board. To revise from scratch, use Start over.
+                    </>
+                  ) : (
+                    <>
+                      Confirming saves this storyline and enables Story Muse to create scene scripts.
+                      To try a different outline, use Start over and generate again.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground/80">Scene breakdown preset</span>{' '}
-                · Choose how many scenes Story Muse should generate (up to 120). For 25+ scenes,
-                long-form generation runs in batches; for 24 or fewer, a single run is used.
-              </div>
-              <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
-                <div className="flex gap-1.5">
-                  {[5, 8, 12, 24, 60].map((count) => {
-                    const active = targetScenes === count;
-                    return (
-                      <button
-                        key={count}
-                        type="button"
-                        onClick={() => {
-                          setTargetScenes(count);
-                          setTargetScenesInput(String(count));
-                        }}
-                        className={cn(
-                          'rounded-full px-3 py-1 text-[11px] font-medium border transition-all',
-                          active
-                            ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200'
-                            : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20 hover:bg-white/10',
-                        )}
-                      >
-                        {count} scenes
-                      </button>
-                    );
-                  })}
+            {!isManualStoryline && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-[11px] text-muted-foreground">
+                  <span className="font-medium text-foreground/80">Scene breakdown preset</span>{' '}
+                  · Choose how many scenes Story Muse should generate (up to 120). For 25+ scenes,
+                  long-form generation runs in batches; for 24 or fewer, a single run is used.
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground/70">or</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    inputMode="numeric"
-                    value={targetScenesInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setTargetScenesInput(value);
-                      const n = Number.parseInt(value, 10);
-                      if (!Number.isNaN(n) && n >= 1 && n <= 120) {
-                        setTargetScenes(n);
-                      }
-                    }}
-                    onBlur={() => {
-                      const n = Number.parseInt(targetScenesInput, 10);
-                      let next = Number.isNaN(n) ? 8 : n;
-                      if (next < 1) next = 1;
-                      if (next > 120) next = 120;
-                      setTargetScenes(next);
-                      setTargetScenesInput(String(next));
-                    }}
-                    className="h-7 w-20 rounded-full border border-white/15 bg-white/5 px-3 text-[11px] text-foreground/90 placeholder:text-muted-foreground/60 outline-none focus:border-emerald-400/70 focus:ring-1 focus:ring-emerald-500/40"
-                    placeholder="e.g. 24 or 60"
-                  />
+                <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex gap-1.5">
+                    {[5, 8, 12, 24, 60].map((count) => {
+                      const active = targetScenes === count;
+                      return (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => {
+                            setTargetScenes(count);
+                            setTargetScenesInput(String(count));
+                          }}
+                          className={cn(
+                            'rounded-full px-3 py-1 text-[11px] font-medium border transition-all',
+                            active
+                              ? 'border-emerald-400/70 bg-emerald-500/20 text-emerald-200'
+                              : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20 hover:bg-white/10',
+                          )}
+                        >
+                          {count} scenes
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground/70">or</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      inputMode="numeric"
+                      value={targetScenesInput}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setTargetScenesInput(value);
+                        const n = Number.parseInt(value, 10);
+                        if (!Number.isNaN(n) && n >= 1 && n <= 120) {
+                          setTargetScenes(n);
+                        }
+                      }}
+                      onBlur={() => {
+                        const n = Number.parseInt(targetScenesInput, 10);
+                        let next = Number.isNaN(n) ? 8 : n;
+                        if (next < 1) next = 1;
+                        if (next > 120) next = 120;
+                        setTargetScenes(next);
+                        setTargetScenesInput(String(next));
+                      }}
+                      className="h-7 w-20 rounded-full border border-white/15 bg-white/5 px-3 text-[11px] text-foreground/90 placeholder:text-muted-foreground/60 outline-none focus:border-emerald-400/70 focus:ring-1 focus:ring-emerald-500/40"
+                      placeholder="e.g. 24 or 60"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Storyline sections */}
@@ -536,13 +706,7 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
 
             {/* Logline */}
             {storyline.logline && (
-              <StorylineSection
-                icon={AlignLeft}
-                label="Logline"
-                accent="violet"
-                editing={editingSection === 'logline'}
-                onEdit={() => setEditingSection(editingSection === 'logline' ? null : 'logline')}
-              >
+              <StorylineSection icon={AlignLeft} label="Logline" accent="violet">
                 <p className="text-sm leading-relaxed italic text-foreground/90">
                   "{storyline.logline}"
                 </p>
@@ -550,61 +714,39 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
             )}
 
             {/* Plot Outline */}
-            <StorylineSection
-              icon={BookOpen}
-              label="Plot Outline"
-              accent="violet"
-              editing={editingSection === 'plot'}
-              onEdit={() => setEditingSection(editingSection === 'plot' ? null : 'plot')}
-            >
-              {editingSection === 'plot' ? (
-                <Textarea
-                  defaultValue={storyline.plotOutline}
-                  rows={5}
-                  className="resize-none bg-white/5 border-white/10 focus:border-violet-500/50 text-sm"
-                />
-              ) : (
-                <p className="text-sm leading-relaxed text-foreground/80">{storyline.plotOutline}</p>
-              )}
+            <StorylineSection icon={BookOpen} label="Plot Outline" accent="violet">
+              <p className="text-sm leading-relaxed text-foreground/80">{storyline.plotOutline}</p>
             </StorylineSection>
 
             {/* Characters */}
-            <StorylineSection
-              icon={Users}
-              label="Characters"
-              accent="blue"
-              editing={editingSection === 'characters'}
-              onEdit={() => setEditingSection(editingSection === 'characters' ? null : 'characters')}
-            >
-              <ul className="space-y-1.5">
-                {storyline.characters.map((char, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-foreground/80">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
-                    {char}
-                  </li>
-                ))}
-              </ul>
-            </StorylineSection>
+            {storyline.characters.length > 0 && (
+              <StorylineSection icon={Users} label="Characters" accent="blue">
+                <ul className="space-y-1.5">
+                  {storyline.characters.map((char, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-foreground/80">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+                      {char}
+                    </li>
+                  ))}
+                </ul>
+              </StorylineSection>
+            )}
 
             {/* Themes */}
-            <StorylineSection
-              icon={Tag}
-              label="Themes"
-              accent="amber"
-              editing={editingSection === 'themes'}
-              onEdit={() => setEditingSection(editingSection === 'themes' ? null : 'themes')}
-            >
-              <div className="flex flex-wrap gap-2">
-                {storyline.themes.map((theme, i) => (
-                  <span
-                    key={i}
-                    className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400"
-                  >
-                    {theme}
-                  </span>
-                ))}
-              </div>
-            </StorylineSection>
+            {storyline.themes.length > 0 && (
+              <StorylineSection icon={Tag} label="Themes" accent="amber">
+                <div className="flex flex-wrap gap-2">
+                  {storyline.themes.map((theme, i) => (
+                    <span
+                      key={i}
+                      className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400"
+                    >
+                      {theme}
+                    </span>
+                  ))}
+                </div>
+              </StorylineSection>
+            )}
           </div>
 
           {/* Bottom CTA */}
@@ -612,7 +754,11 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
             <Button
               variant="outline"
               className="border-white/10 bg-white/5 hover:bg-white/8 gap-2"
-              onClick={() => { setStoryline(null); setSelectedMethod(null); }}
+              onClick={() => {
+                setStoryline(null);
+                setSelectedMethod(null);
+                setStorylineOrigin(null);
+              }}
             >
               Start over
             </Button>
@@ -621,7 +767,9 @@ export function StorylineStage({ project, onConfirm, llmSettings }: StorylineSta
               onClick={handleConfirm}
             >
               <CheckCircle2 className="h-4 w-4" />
-              Confirm Storyline &amp; Proceed to Scene Scripts
+              {isManualStoryline
+                ? 'Confirm Storyline & Open Scene Board'
+                : 'Confirm Storyline & Proceed to Scene Scripts'}
             </Button>
           </div>
         </div>
@@ -638,8 +786,6 @@ interface StorySectionProps {
   icon: React.ElementType;
   label: string;
   accent: 'violet' | 'blue' | 'amber';
-  editing?: boolean;
-  onEdit?: () => void;
   children: React.ReactNode;
 }
 
@@ -667,27 +813,17 @@ const ACCENT_MAP = {
   },
 };
 
-function StorylineSection({ icon: Icon, label, accent, editing, onEdit, children }: StorySectionProps) {
+function StorylineSection({ icon: Icon, label, accent, children }: StorySectionProps) {
   const a = ACCENT_MAP[accent];
   return (
     <div className={cn('rounded-xl border p-5', a.border, a.bg)}>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={cn('flex h-6 w-6 items-center justify-center rounded-md', a.iconBg)}>
-            <Icon className={cn('h-3.5 w-3.5', a.icon)} />
-          </span>
-          <span className={cn('text-xs font-semibold uppercase tracking-wide', a.label)}>
-            {label}
-          </span>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onEdit}
-          className="h-6 rounded-full px-2.5 text-[11px] text-muted-foreground hover:text-foreground"
-        >
-          {editing ? 'Done' : 'Edit'}
-        </Button>
+      <div className="mb-3 flex items-center gap-2">
+        <span className={cn('flex h-6 w-6 items-center justify-center rounded-md', a.iconBg)}>
+          <Icon className={cn('h-3.5 w-3.5', a.icon)} />
+        </span>
+        <span className={cn('text-xs font-semibold uppercase tracking-wide', a.label)}>
+          {label}
+        </span>
       </div>
       {children}
     </div>

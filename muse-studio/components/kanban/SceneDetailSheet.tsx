@@ -31,6 +31,7 @@ export function SceneDetailSheet({ scene, isOpen, onClose, onAskMuse }: SceneDet
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
         side="right"
+        dismissible={false}
         className="w-full max-w-md border-white/8 bg-[oklch(0.11_0.01_264)] p-0 flex flex-col"
       >
         <SheetHeader className="border-b border-white/8 px-5 py-4">

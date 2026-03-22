@@ -32,11 +32,10 @@ export function FinalSceneDialog({ isOpen, scene, onClose }: FinalSceneDialogPro
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      role="dialog"
+      aria-modal="true"
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-auto" aria-hidden />
 
       <div className="relative z-10 flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[oklch(0.13_0.01_264)] shadow-2xl shadow-black/60">
         {/* Header */}

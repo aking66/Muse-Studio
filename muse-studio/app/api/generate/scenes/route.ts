@@ -21,6 +21,17 @@ import { db } from '@/db';
 
 const MAX_SCENES_PER_REQUEST = 24;
 
+/** Manual storylines can be huge; oversized prompts slow or overload local LLMs. Full text stays in DB. */
+const MAX_SCENE_PROMPT_PLOT_CHARS = 26_000;
+const MAX_SCENE_PROMPT_CHAR_BLOCK_CHARS = 3_200;
+const MAX_SCENE_PROMPT_LOGLINE_CHARS = 1_600;
+const MAX_SCENE_PROMPT_THEMES_CHARS = 2_000;
+
+function clipForScenePrompt(text: string, max: number, note: string): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n\n[${note}]`;
+}
+
 // ── Scene generation system prompt ───────────────────────────────────────────
 
 function buildSceneSystemPrompt(targetScenes: number): string {
@@ -133,7 +144,24 @@ async function* generateOllamaText(opts: {
     throw new Error(msg);
   }
 
-  if (!res.ok || !res.body) throw new Error(`Ollama HTTP ${res.status}`);
+  if (!res.ok) {
+    let bodySnippet = '';
+    try {
+      bodySnippet = (await res.text()).trim().slice(0, 280);
+    } catch {
+      /* ignore */
+    }
+    if (res.status === 429) {
+      throw new Error(
+        'Ollama returned 429 (too many requests). The GPU is busy, another tab is generating, or limits are tight — wait a minute, stop parallel runs, then retry.',
+      );
+    }
+    throw new Error(
+      `Ollama HTTP ${res.status}${bodySnippet ? ` — ${bodySnippet}` : ''}`,
+    );
+  }
+
+  if (!res.body) throw new Error('Ollama returned no response body');
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -163,8 +191,14 @@ async function* generateOpenAICompatText(opts: {
   systemPrompt: string;
   userMessage: string;
   providerName?: string;
+  /** Output token budget; default too small for many scenes. */
+  maxOutputTokens?: number;
+  timeoutMs?: number;
 }): AsyncGenerator<string> {
   if (!opts.apiKey) throw new Error(`${opts.providerName ?? 'API'} key not configured.`);
+
+  const maxTokens = opts.maxOutputTokens ?? 3000;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
 
   let res: globalThis.Response;
   try {
@@ -181,11 +215,11 @@ async function* generateOpenAICompatText(opts: {
           { role: 'system', content: opts.systemPrompt },
           { role: 'user', content: opts.userMessage },
         ],
-        max_tokens: 3000,
+        max_tokens: maxTokens,
         temperature: 0.75,
         stream: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new Error(`Cannot connect to ${opts.providerName ?? 'API'}.`);
@@ -301,11 +335,31 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: 'Project has no confirmed storyline' }), { status: 400 });
   }
 
-  const logline = projectRow.storyline_logline ?? '';
-  const plotOutline = projectRow.storyline_plot_outline;
-  const characters: string[] = projectRow.storyline_characters ? JSON.parse(projectRow.storyline_characters) : [];
+  const loglineRaw = projectRow.storyline_logline ?? '';
+  const plotOutlineRaw = projectRow.storyline_plot_outline;
+  const charactersRaw: string[] = projectRow.storyline_characters ? JSON.parse(projectRow.storyline_characters) : [];
   const themes: string[] = projectRow.storyline_themes ? JSON.parse(projectRow.storyline_themes) : [];
   const genre = projectRow.storyline_genre ?? '';
+
+  const logline = loglineRaw
+    ? clipForScenePrompt(
+        loglineRaw,
+        MAX_SCENE_PROMPT_LOGLINE_CHARS,
+        'Logline truncated for scene-generation prompt; full line is stored in the project.',
+      )
+    : '';
+  const plotOutline = clipForScenePrompt(
+    plotOutlineRaw,
+    MAX_SCENE_PROMPT_PLOT_CHARS,
+    'Plot truncated for scene-generation prompt; full outline is stored in the project.',
+  );
+  const characters = charactersRaw.map((c, i) =>
+    clipForScenePrompt(
+      c,
+      MAX_SCENE_PROMPT_CHAR_BLOCK_CHARS,
+      `Character ${i + 1} truncated for scene-generation prompt; full bio is stored in the project.`,
+    ),
+  );
 
   // Load LLM settings
   const settingRows = db
@@ -333,6 +387,11 @@ export async function POST(req: NextRequest) {
   }
   const targetScenes = requested;
 
+  // OpenAI-style APIs need enough output tokens for N scene blocks; 3k cuts off around 1–2 scenes.
+  const openaiMaxOutput = Math.min(16_384, Math.max(4_096, Math.round(600 * targetScenes)));
+  const openaiStreamTimeoutMs = Math.min(60 * 60 * 1000, 120_000 + targetScenes * 25_000);
+  const claudeMaxOutput = Math.min(8_192, Math.max(4_096, Math.round(520 * targetScenes)));
+
   const sceneSystemPrompt = buildSceneSystemPrompt(targetScenes);
 
   // Scale Ollama token limit and timeout for large scene counts
@@ -340,13 +399,19 @@ export async function POST(req: NextRequest) {
   const ollamaTimeoutMs = 15 * 60 * 1000 + Math.max(0, targetScenes - 10) * 60 * 1000;
   const ollamaTimeoutCapped = Math.min(60 * 60 * 1000, ollamaTimeoutMs);
 
+  const themesJoined = themes.join(', ');
+  const themesClipped =
+    themesJoined.length > MAX_SCENE_PROMPT_THEMES_CHARS
+      ? `${themesJoined.slice(0, MAX_SCENE_PROMPT_THEMES_CHARS)}… [themes truncated for prompt]`
+      : themesJoined;
+
   // Build the user message from storyline
   const userMessage = [
     `PROJECT STORYLINE`,
     logline ? `LOGLINE: ${logline}` : '',
     `PLOT OUTLINE:\n${plotOutline}`,
     characters.length ? `CHARACTERS:\n${characters.map((c) => `- ${c}`).join('\n')}` : '',
-    themes.length ? `THEMES: ${themes.join(', ')}` : '',
+    themes.length ? `THEMES: ${themesClipped}` : '',
     genre ? `GENRE: ${genre}` : '',
     '',
     `Generate between ${Math.max(1, targetScenes - 1)} and ${targetScenes + 2} scenes as specified.`,
@@ -359,9 +424,23 @@ export async function POST(req: NextRequest) {
 
       // ── Phase 1: Import events ────────────────────────────────────────────
       const importFields = [
-        { field: 'logline', label: 'Logline', value: logline ? logline.slice(0, 80) + (logline.length > 80 ? '…' : '') : '(none)' },
-        { field: 'plotOutline', label: 'Plot Outline', value: plotOutline.slice(0, 60) + '…' },
-        { field: 'characters', label: 'Characters', value: `${characters.length} character${characters.length !== 1 ? 's' : ''}` },
+        {
+          field: 'logline',
+          label: 'Logline',
+          value: loglineRaw
+            ? loglineRaw.slice(0, 80) + (loglineRaw.length > 80 ? '…' : '')
+            : '(none)',
+        },
+        {
+          field: 'plotOutline',
+          label: 'Plot Outline',
+          value: plotOutlineRaw.slice(0, 60) + (plotOutlineRaw.length > 60 ? '…' : ''),
+        },
+        {
+          field: 'characters',
+          label: 'Characters',
+          value: `${charactersRaw.length} character${charactersRaw.length !== 1 ? 's' : ''}`,
+        },
         { field: 'themes', label: 'Themes', value: `${themes.length} theme${themes.length !== 1 ? 's' : ''}` },
         { field: 'genre', label: 'Genre', value: genre || 'Unspecified' },
       ];
@@ -384,6 +463,8 @@ export async function POST(req: NextRequest) {
             systemPrompt: sceneSystemPrompt,
             userMessage,
             providerName: 'OpenAI',
+            maxOutputTokens: openaiMaxOutput,
+            timeoutMs: openaiStreamTimeoutMs,
           });
         } else if (provider === 'claude') {
           generator = generateOpenAICompatText({
@@ -393,6 +474,8 @@ export async function POST(req: NextRequest) {
             systemPrompt: sceneSystemPrompt,
             userMessage,
             providerName: 'Claude',
+            maxOutputTokens: claudeMaxOutput,
+            timeoutMs: openaiStreamTimeoutMs,
           });
         } else {
           generator = generateOllamaText({
