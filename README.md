@@ -13,6 +13,15 @@ It combines:
 - A **Python FastAPI backend** (`muse_backend`) that orchestrates LLMs and video/image providers
 - Tight integration with **ComfyUI** for image and video generation via your own workflows
 
+
+<img width="1879" height="1051" alt="Screenshot 2026-03-23 025652" src="https://github.com/user-attachments/assets/9ab5d5b9-c09b-4be6-ba4d-18dd14eeb3b3" />
+
+<img width="1860" height="1040" alt="Screenshot 2026-03-23 032353" src="https://github.com/user-attachments/assets/0f34c831-1177-47ba-97c8-94dd485f6421" />
+
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/N9FTtNYHzIU?si=m8ArCOop-W6L53C_" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+
 This README covers **installation, configuration, and day‑to‑day usage** of the frontend and backend on your machine.
 
 ---
