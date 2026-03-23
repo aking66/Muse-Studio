@@ -6,18 +6,34 @@ About Basic Usage Of Muse Studio : https://youtu.be/N9FTtNYHzIU
 
 This is create as my hobby, if company want to customize for your workflow, feel free to reach out. 
 
+Any developers want to modify this open source project, feel free to reach out, so I can add you in the Contributor list.
 
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 It combines:
 - A **frontend** (`muse-studio`) with kanban-style scenes, characters, and “Muse” suggestions
 - A **Python FastAPI backend** (`muse_backend`) that orchestrates LLMs and video/image providers
 - Tight integration with **ComfyUI** for image and video generation via your own workflows
+  
 
+<img width="1589" height="859" alt="Screenshot 2026-03-24 001034" src="https://github.com/user-attachments/assets/b52f1379-9803-4a92-bfc3-ec17198b4c50" />
+
+<img width="1612" height="834" alt="Screenshot 2026-03-24 001159" src="https://github.com/user-attachments/assets/79b517cd-3890-45fb-aa81-8e6687b64e90" />
+
+<img width="1590" height="892" alt="Screenshot 2026-03-24 001246" src="https://github.com/user-attachments/assets/e12ede1c-4d03-4664-9064-adeb5316a908" />
+
+<img width="1598" height="889" alt="Screenshot 2026-03-24 001339" src="https://github.com/user-attachments/assets/bb2b32b3-1d56-44bc-bbf2-3141b4529466" />
 
 <img width="1879" height="1051" alt="Screenshot 2026-03-23 025652" src="https://github.com/user-attachments/assets/9ab5d5b9-c09b-4be6-ba4d-18dd14eeb3b3" />
 
 <img width="1860" height="1040" alt="Screenshot 2026-03-23 032353" src="https://github.com/user-attachments/assets/0f34c831-1177-47ba-97c8-94dd485f6421" />
 
+<img width="1598" height="889" alt="Screenshot 2026-03-24 001339" src="https://github.com/user-attachments/assets/efaba4b0-d22f-4e98-9c09-fac5c1f7b486" />
+
+<img width="1595" height="843" alt="Screenshot 2026-03-24 001427" src="https://github.com/user-attachments/assets/5df98f07-285f-4b43-9ba5-c1b5dda2f37c" />
+
+<img width="1569" height="837" alt="Screenshot 2026-03-24 001449" src="https://github.com/user-attachments/assets/8d7327c9-fd36-454b-b8c3-ab16f7699f3f" />
 
 
 This README covers **installation, configuration, and day‑to‑day usage** of the frontend and backend on your machine.
