@@ -123,13 +123,13 @@ should:
    `muse_backend/.env` this might look like:
 
    ```env
-   MUSE_ASR_MODEL_ID=e:/MuseAgent_KanbunPM/v3_src/muse_backend/models/onnx-asr/whisper-small-pt
+   MUSE_ASR_MODEL_ID=e:/muse_backend/models/onnx-asr/whisper-small-pt
    ```
 
    On Windows PowerShell you can also set it temporarily for the current shell:
 
    ```powershell
-   $env:MUSE_ASR_MODEL_ID = "e:\MuseAgent_KanbunPM\v3_src\muse_backend\models\onnx-asr\whisper-small-pt"
+   $env:MUSE_ASR_MODEL_ID = "e:\muse_backend\models\onnx-asr\whisper-small-pt"
    ```
 
 At runtime, `app.video_editor_tools._get_asr_model()` will load this model once
