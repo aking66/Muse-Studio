@@ -57,6 +57,7 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 13. [Polished export (Remotion)](#13-polished-export-remotion)
 14. [Publishing on GitHub](#14-publishing-on-github)
 15. [Credits & acknowledgments](#15-credits--acknowledgments)
+16. [Security checks](#16-security-checks)
 
 ---
 
@@ -835,3 +836,17 @@ This project is licensed under the MIT License — see [LICENSE](LICENSE).
 ## 15. Credits & acknowledgments
 
 **Remotion** — Muse Studio’s polished film export and timeline preview build on **[Remotion](https://www.remotion.dev/)**, the React-based framework for programmatic video. Thank you to the Remotion team and community for the tools and documentation that make headless, code-driven rendering practical in this stack.
+
+---
+
+## 16. Security checks
+
+Run the supply-chain guard script from repo root:
+
+```bash
+python scripts/security_dependency_guard.py
+```
+
+The guard scans for known IOC strings and denylisted dependency versions (including `litellm==1.82.8`), then exits non-zero on findings so it can be used in CI.
+
+For remediation guidance, see [`SECURITY.md`](SECURITY.md).
