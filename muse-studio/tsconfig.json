@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@plugin-sdk/*": ["../packages/plugin-sdk/src/*"]
     }
   },
   "include": [

@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { updateSceneStatus, createKeyframe, updateKeyframeOutput } from '@/lib/actions/scenes';
+import { updateScene, updateSceneStatus, createKeyframe, updateKeyframeOutput } from '@/lib/actions/scenes';
+import { listEnabledPluginsForCapability } from '@/lib/actions/plugins';
 import type { Scene, Character } from '@/lib/types';
 import type { ComfyWorkflowFull, ComfyWorkflowSummary } from '@/lib/actions/comfyui';
 import {
@@ -45,6 +46,15 @@ interface JobResult {
 
 const POLL_INTERVAL = 2500;
 
+type PluginProviderSummary = {
+  id: string;
+  name: string;
+  version: string;
+  capability: string;
+  method: string;
+  path: string;
+};
+
 export function ComfyGenerateDialog({
   isOpen,
   scene,
@@ -61,8 +71,11 @@ export function ComfyGenerateDialog({
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>('loading');
+  const [providerMode, setProviderMode] = useState<'comfyui' | 'plugin'>('comfyui');
   const [workflow, setWorkflow] = useState<ComfyWorkflowFull | null>(null);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(workflowId);
+  const [pluginProviders, setPluginProviders] = useState<PluginProviderSummary[]>([]);
+  const [activePluginId, setActivePluginId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<ComfyDynamicInput[]>([]);
   const [outputs, setOutputs] = useState<ComfyDynamicOutput[]>([]);
   const [inputValues, setInputValues] = useState<Record<string, string | number>>({});
@@ -85,6 +98,28 @@ export function ComfyGenerateDialog({
     if (!isOpen) return;
     setActiveWorkflowId(workflowId);
   }, [isOpen, workflowId]);
+
+  useEffect(() => {
+    if (!isOpen || !kind) return;
+    let cancelled = false;
+    const capability = kind === 'image' ? 'image.generate' : 'video.generate';
+    listEnabledPluginsForCapability(capability)
+      .then((providers) => {
+        if (cancelled) return;
+        setPluginProviders(providers);
+        setActivePluginId((prev) =>
+          prev && providers.some((p) => p.id === prev) ? prev : providers[0]?.id ?? null,
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPluginProviders([]);
+        setActivePluginId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, kind]);
 
   useEffect(() => {
     if (!isOpen || !activeWorkflowId || !scene || !kind) return;
@@ -319,7 +354,13 @@ export function ComfyGenerateDialog({
   // ── Generate ───────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
-    if (!scene || !activeWorkflowId) return;
+    if (!scene) return;
+    if (providerMode === 'comfyui' && !activeWorkflowId) return;
+    if (providerMode === 'plugin' && !activePluginId) {
+      setError('No enabled plugin provider found for this capability.');
+      setPhase('error');
+      return;
+    }
     if (!validateInputs()) return;
 
     setPhase('submitting');
@@ -332,21 +373,85 @@ export function ComfyGenerateDialog({
     }
 
     try {
-      const res = await fetch('/api/generate/comfyui', {
+      const textInputs = inputs.filter((i) => i.kind === 'textarea' || i.kind === 'text');
+      const firstPromptNode = textInputs[0]?.nodeId;
+      const prompt = firstPromptNode ? String(mergedValues[firstPromptNode] ?? '').trim() : '';
+      const referenceImages = Object.values(filePaths).map((relPath) => ({
+        url: `/api/outputs/${relPath}`,
+      }));
+
+      const route = providerMode === 'comfyui' ? '/api/generate/comfyui' : '/api/generate/plugin-provider';
+      const reqBody =
+        providerMode === 'comfyui'
+          ? {
+              workflow_id: activeWorkflowId,
+              scene_id: scene.id,
+              kind,
+              inputValues: mergedValues,
+            }
+          : {
+              plugin_id: activePluginId,
+              scene_id: scene.id,
+              kind,
+              input:
+                kind === 'image'
+                  ? {
+                      projectId: undefined,
+                      sceneId: scene.id,
+                      prompt: prompt || scene.description || 'Generate image',
+                      generationParams: {},
+                      referenceImages,
+                      pluginParams: { rawInputs: mergedValues },
+                    }
+                  : {
+                      projectId: undefined,
+                      sceneId: scene.id,
+                      prompt: prompt || undefined,
+                      sourceImages: referenceImages,
+                      generationParams: {},
+                      pluginParams: { rawInputs: mergedValues },
+                    },
+            };
+
+      const res = await fetch(route, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflow_id: activeWorkflowId,
-          scene_id: scene.id,
-          kind,
-          inputValues: mergedValues,
-        }),
+        body: JSON.stringify(reqBody),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         const msg: string = data?.error ?? 'Generation request failed.';
+        if (providerMode === 'plugin' && activeWorkflowId) {
+          // Fallback to assigned Comfy workflow if plugin provider fails.
+          const fallbackRes = await fetch('/api/generate/comfyui', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workflow_id: activeWorkflowId,
+              scene_id: scene.id,
+              kind,
+              inputValues: mergedValues,
+            }),
+          });
+          const fallbackData = await fallbackRes.json();
+          if (fallbackRes.ok && fallbackData?.job_id) {
+            const jid: string = fallbackData.job_id;
+            setError(`Plugin failed; fallback to ComfyUI (${msg}).`);
+            setJobId(jid);
+            if (kind === 'video') {
+              await updateSceneStatus(scene.id, 'GENERATING');
+              onGenerationStarted?.(scene.id, jid);
+              router.refresh();
+              onClose();
+            } else {
+              setPhase('polling');
+              startPolling(jid);
+            }
+            return;
+          }
+        }
         if (
           (msg === 'Workflow not found' || msg === 'Stored workflow JSON is invalid') &&
           scene &&
@@ -361,19 +466,39 @@ export function ComfyGenerateDialog({
         return;
       }
 
-      const jid: string = data.job_id;
-      setJobId(jid);
-
-      if (kind === 'video') {
-        // Hand off polling to KanbanBoard; close dialog
-        await updateSceneStatus(scene.id, 'GENERATING');
-        onGenerationStarted?.(scene.id, jid);
-        router.refresh();
-        onClose();
+      if (providerMode === 'plugin') {
+        const outPath = data.output_path as string | undefined;
+        const outUrl = data.output_url as string | undefined;
+        if (!outPath || !outUrl) {
+          setError('Plugin provider response missing output path/url.');
+          setPhase('error');
+          return;
+        }
+        if (kind === 'video') {
+          await updateScene(scene.id, { videoUrl: `/api/outputs/${outPath}` });
+          await updateSceneStatus(scene.id, 'PENDING_APPROVAL');
+          router.refresh();
+          onClose();
+        } else {
+          setResultOutputPath(outPath);
+          setResultImageUrl(outUrl);
+          setPhase('result');
+        }
       } else {
-        // Image: poll internally
-        setPhase('polling');
-        startPolling(jid);
+        const jid: string = data.job_id;
+        setJobId(jid);
+
+        if (kind === 'video') {
+          // Hand off polling to KanbanBoard; close dialog
+          await updateSceneStatus(scene.id, 'GENERATING');
+          onGenerationStarted?.(scene.id, jid);
+          router.refresh();
+          onClose();
+        } else {
+          // Image: poll internally
+          setPhase('polling');
+          startPolling(jid);
+        }
       }
     } catch {
       setError('Network error. Is the backend running?');
@@ -471,34 +596,71 @@ export function ComfyGenerateDialog({
               )}
 
               {/* Workflow selector (so users can switch without closing dialog) */}
-              {kind && workflows.length > 0 && (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-muted-foreground">
-                    {kind === 'image' ? 'ComfyUI image workflow' : 'ComfyUI video workflow'}
-                  </label>
+              {kind && (
+                <div className="space-y-2">
+                  <label className="text-[11px] font-medium text-muted-foreground">Provider</label>
                   <select
-                    value={activeWorkflowId ?? ''}
-                    onChange={async (e) => {
-                      const nextId = e.target.value || null;
-                      if (!nextId) return;
-                      if (phase === 'submitting' || phase === 'polling') return;
-                      try {
-                        setActiveWorkflowId(nextId);
-                        setError(null);
-                        await onWorkflowChange?.(nextId);
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Failed to update workflow.');
-                      }
-                    }}
-                    disabled={phase === 'loading' || phase === 'submitting' || phase === 'polling'}
-                    className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                    value={providerMode}
+                    onChange={(e) => setProviderMode(e.target.value as 'comfyui' | 'plugin')}
+                    disabled={phase === 'submitting' || phase === 'polling'}
+                    className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs text-foreground"
                   >
-                    {workflows.map((wf) => (
-                      <option key={wf.id} value={wf.id}>
-                        {wf.name}
-                      </option>
-                    ))}
+                    <option value="comfyui">ComfyUI workflow</option>
+                    <option value="plugin">Plugin provider</option>
                   </select>
+
+                  {providerMode === 'comfyui' ? (
+                    workflows.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">
+                          {kind === 'image' ? 'ComfyUI image workflow' : 'ComfyUI video workflow'}
+                        </label>
+                        <select
+                          value={activeWorkflowId ?? ''}
+                          onChange={async (e) => {
+                            const nextId = e.target.value || null;
+                            if (!nextId) return;
+                            if (phase === 'submitting' || phase === 'polling') return;
+                            try {
+                              setActiveWorkflowId(nextId);
+                              setError(null);
+                              await onWorkflowChange?.(nextId);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'Failed to update workflow.');
+                            }
+                          }}
+                          disabled={phase === 'loading' || phase === 'submitting' || phase === 'polling'}
+                          className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        >
+                          {workflows.map((wf) => (
+                            <option key={wf.id} value={wf.id}>
+                              {wf.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No ComfyUI workflows for this kind.</p>
+                    )
+                  ) : pluginProviders.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-muted-foreground">Plugin provider</label>
+                      <select
+                        value={activePluginId ?? ''}
+                        onChange={(e) => setActivePluginId(e.target.value || null)}
+                        disabled={phase === 'submitting' || phase === 'polling'}
+                        className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs text-foreground"
+                      >
+                        {pluginProviders.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} (v{p.version})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No enabled plugin providers for this capability.</p>
+                  )}
                 </div>
               )}
 

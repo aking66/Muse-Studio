@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: '/settings/llm',     label: 'LLM',     icon: Brain,    description: 'Provider, model & API keys' },
   { href: '/settings/comfyui', label: 'ComfyUI',  icon: Workflow, description: 'Workflow library' },
+  { href: '/settings/plugins', label: 'Plugins', icon: Workflow, description: 'Add-on extensions (external services)' },
   { href: '/settings/about',   label: 'About',    icon: Info,     description: 'Version & credits' },
 ];
 

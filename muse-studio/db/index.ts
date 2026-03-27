@@ -128,6 +128,64 @@ function applySchema(database: Database.Database): void {
       updated_at  TEXT NOT NULL
     );
 
+    -- Plugin Extensions (AddOn PlugIns Enable)
+    -- Control-plane stored in Muse Studio (SQLite); runtime executes externally.
+    CREATE TABLE IF NOT EXISTS plugins (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      version         TEXT NOT NULL,
+      source_url     TEXT NOT NULL,
+      repo            TEXT,
+      branch_or_tag  TEXT,
+      manifest_json  TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'installed',
+      enabled         INTEGER NOT NULL DEFAULT 0,
+      installed_at    TEXT NOT NULL,
+      updated_at      TEXT NOT NULL,
+      last_error      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_endpoints (
+      plugin_id          TEXT PRIMARY KEY REFERENCES plugins(id) ON DELETE CASCADE,
+      base_url           TEXT NOT NULL,
+      auth_type          TEXT NOT NULL DEFAULT 'none',
+      auth_ref           TEXT,
+      health_status      TEXT NOT NULL DEFAULT 'unknown',
+      last_health_at     TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_hooks (
+      plugin_id      TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+      capability     TEXT NOT NULL,
+      method         TEXT NOT NULL DEFAULT 'POST',
+      path           TEXT NOT NULL,
+      permissions_json TEXT,
+      enabled        INTEGER NOT NULL DEFAULT 1,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      PRIMARY KEY (plugin_id, capability)
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_ui_extensions (
+      plugin_id        TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+      slot             TEXT NOT NULL,
+      bundle_url      TEXT NOT NULL,
+      integrity_hash  TEXT,
+      permissions_json TEXT,
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      created_at      TEXT NOT NULL,
+      updated_at      TEXT NOT NULL,
+      PRIMARY KEY (plugin_id, slot, bundle_url)
+    );
+
+    CREATE TABLE IF NOT EXISTS plugin_settings (
+      plugin_id   TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+      key         TEXT NOT NULL,
+      value       TEXT,
+      updated_at  TEXT NOT NULL,
+      PRIMARY KEY (plugin_id, key)
+    );
+
     CREATE TABLE IF NOT EXISTS muse_chat_messages (
       id          TEXT PRIMARY KEY,
       project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,

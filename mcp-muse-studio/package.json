@@ -1,0 +1,15 @@
+{
+  "name": "mcp-muse-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP adapter exposing Muse Studio capabilities (projects, story, scenes, editor, timeline).",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "better-sqlite3": "12.6.2",
+    "zod": "^4.0.0"
+  }
+}

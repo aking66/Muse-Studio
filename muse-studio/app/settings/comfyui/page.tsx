@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { Workflow, Plus, Trash2, Pencil, Check, X, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,11 +19,11 @@ export default function ComfyUISettingsPage() {
   const [workflows, setWorkflows] = useState<ComfyWorkflowSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Load on first render
-  if (!loaded) {
+  useEffect(() => {
+    if (loaded) return;
     setLoaded(true);
     listComfyWorkflows().then(setWorkflows).catch(console.error);
-  }
+  }, [loaded]);
 
   return (
     <div className="space-y-8">
