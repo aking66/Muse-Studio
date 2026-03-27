@@ -58,6 +58,7 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 14. [Publishing on GitHub](#14-publishing-on-github)
 15. [Credits & acknowledgments](#15-credits--acknowledgments)
 16. [Security checks](#16-security-checks)
+17. [Changelog (releases)](#changelog-releases)
 
 ---
 
@@ -65,10 +66,23 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 
 ### Release 1.5.0 (2026-03-28)
 
-- **Product version** is **1.5.0** across the frontend (`muse-studio`), backend API (`/health`), and plugin SDK/host packages.
-- **Story & scene generation** — shared helpers under `muse-studio/lib/generation/` (story + batch scenes routes are thinner; easier to maintain).
-- **LLM providers** — shared Story Muse system prompts in `muse_backend/app/providers/llm/shared_prompts.py` (less duplication across OpenAI, Claude, OpenRouter, LM Studio, Ollama).
-- **Jobs & Comfy/plugin flows** — `useJobPoll`, shared job utilities, and clearer ComfyUI vs plugin-provider paths for generation dialogs and playground.
+**Full release notes:** see [`CHANGELOG.md`](CHANGELOG.md) (copy into the [GitHub Releases](https://github.com/benjiyaya/Muse-Studio/releases) description for tag `v1.5.0`).
+
+**Highlights — features**
+
+- **Version 1.5.0** everywhere that matters: **Settings → About**, **`GET /health`** (`version` field), and npm packages (`muse-studio`, `@muse/plugin-host`, `@muse/plugin-sdk`, `mcp-muse-studio`).
+- **OpenRouter** as a first-class LLM provider (env-based keys; Settings for model/base URL).
+- **Plugin extensions** — **Settings → Plugins**; scene/playground generation can use **ComfyUI** or **plugin** providers with documented fallback behavior.
+- **MCP** — `mcp-muse-studio/` MCP adapter for external tooling.
+- **Security** — `scripts/security_dependency_guard.py` + `SECURITY.md` for dependency/supply-chain checks.
+
+**Highlights — codebase**
+
+- **`muse-studio/lib/generation/`** — story + batch scenes logic extracted from API routes (`storyGenerationInternals`, `scenesBatchSupport`, `openRouterHeaders`, `comfyPluginGeneration`).
+- **`muse_backend/app/providers/llm/shared_prompts.py`** — shared Story Muse prompts for cloud/local LLM providers.
+- **`useJobPoll` / `lib/jobs/jobPolling.ts`** — shared polling for Comfy and plugin jobs; **`lib/server/`** helpers for paths/ids.
+- **`muse-studio/lib/plugin-extension/`** + plugin API routes; **`packages/plugin-host`**, **`packages/plugin-sdk`**, template under **`packages/plugin-template-zimage-turbo`**.
+- **`APP_VERSION`** in `muse_backend/app/main.py`; **`HOST_MUSE_VERSION`** in plugin types for third-party compatibility.
 
 ### Exporting your film with the Video Editor Agent (2026-03-13)
 
@@ -867,3 +881,9 @@ python scripts/security_dependency_guard.py
 The guard scans for known IOC strings and denylisted dependency versions (including `litellm==1.82.8`), then exits non-zero on findings so it can be used in CI.
 
 For remediation guidance, see [`SECURITY.md`](SECURITY.md).
+
+---
+
+## Changelog releases
+
+Version history and **detailed release notes** (features, codebase paths, docs) live in [`CHANGELOG.md`](CHANGELOG.md). For **v1.5.0**, open that file and paste the **[1.5.0]** section into the GitHub Release body for tag [`v1.5.0`](https://github.com/benjiyaya/Muse-Studio/releases/tag/v1.5.0) if you want the web UI to mirror the repo.
