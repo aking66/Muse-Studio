@@ -9,6 +9,7 @@ import type {
   SuggestionAction,
 } from '@/lib/types';
 import type { NewSuggestion } from '@/lib/muse/suggestion-engine';
+import { newPrefixedId } from '@/lib/server/ids';
 
 interface SuggestionRow {
   id: string;
@@ -33,12 +34,6 @@ function mapRow(row: SuggestionRow): MuseSuggestion {
     createdAt: new Date(row.created_at),
     isRead: row.is_read === 1,
   };
-}
-
-function newId(prefix = 'sug'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 7)}`;
 }
 
 /**
@@ -103,7 +98,7 @@ export async function createMuseSuggestions(
 
       if (existing) continue;
 
-      const id = newId();
+      const id = newPrefixedId('sug');
       insert.run(
         id,
         projectId,

@@ -16,41 +16,12 @@ from typing import Any, AsyncGenerator, Optional
 
 from app.providers.base import LLMProvider, LLMChunk
 from app.config import settings
+from app.providers.llm.shared_prompts import system_prompts_openai_compatible
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 
-SYSTEM_PROMPTS: dict[str, str] = {
-    "generate_storyline": (
-        "You are Story Muse, a creative AI assistant specializing in film narrative development. "
-        "Generate a rich, structured storyline outline including: logline, plot outline, "
-        "character descriptions, themes, and genre. Be cinematic, evocative, and precise."
-    ),
-    "write_scene_script": (
-        "You are Story Muse, a professional screenwriter AI. "
-        "Write a properly formatted scene script including: scene heading (INT./EXT. LOCATION — TIME), "
-        "action description, and dialogue with character names and parentheticals. "
-        "Follow standard screenplay format."
-    ),
-    "refine_dialogue": (
-        "You are Story Muse, an expert dialogue editor. "
-        "Improve the provided dialogue for naturalness, character voice, and dramatic impact. "
-        "Preserve the original intent while enhancing subtext and rhythm."
-    ),
-    "add_tension": (
-        "You are Story Muse, a dramatic tension specialist. "
-        "Enhance the provided scene to increase dramatic tension, stakes, or conflict. "
-        "Suggest specific additions or modifications."
-    ),
-    "general_query": (
-        "You are Story Muse, a creative AI assistant for filmmakers. "
-        "Help with any aspect of film narrative, script writing, or story development."
-    ),
-    "default": (
-        "You are Story Muse, a creative AI assistant for filmmakers. "
-        "Help with any aspect of film narrative, script writing, or story development."
-    ),
-}
+SYSTEM_PROMPTS: dict[str, str] = system_prompts_openai_compatible(include_general_query=True)
 
 
 def _api_key() -> Optional[str]:

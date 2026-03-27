@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { VideoGenerateResponse, JobResult } from '@/lib/backend-client';
+import { JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
+import { useSingleJobPoll } from '@/hooks/useJobPoll';
 
 export interface VideoOptions {
   sceneId: string;
@@ -25,14 +27,10 @@ export interface MotionMuseState {
   error: string | null;
 }
 
-// Motion Muse (generic video) polling — align with Kanban video polling.
-// 3 minutes to reduce backend load for long-running video jobs.
-const POLL_INTERVAL_MS = 3 * 60 * 1000;
-
 /**
  * Manages Motion Muse async video generation:
  *   1. submitJob() → POST /api/generate/video — gets a job_id immediately
- *   2. Polls GET /api/jobs/[id] every 3 s until completed or failed
+ *   2. Polls GET /api/jobs/[id] on a long interval until completed or failed
  */
 export function useMotionMuse() {
   const [state, setState] = useState<MotionMuseState>({
@@ -45,58 +43,34 @@ export function useMotionMuse() {
     error: null,
   });
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  // Clean up interval on unmount
-  useEffect(() => () => stopPolling(), [stopPolling]);
-
-  const startPolling = useCallback(
-    (jobId: string) => {
-      stopPolling();
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/jobs/${jobId}`);
-          if (!res.ok) return;
-          const job = (await res.json()) as JobResult;
-
-          if (job.status === 'completed') {
-            stopPolling();
-            setState((prev) => ({
-              ...prev,
-              phase: 'completed',
-              progressPercent: 100,
-              message: job.message ?? 'Generation complete',
-              outputPath: job.output_path ?? null,
-            }));
-          } else if (job.status === 'failed') {
-            stopPolling();
-            setState((prev) => ({
-              ...prev,
-              phase: 'failed',
-              error: job.error ?? 'Video generation failed',
-            }));
-          } else {
-            setState((prev) => ({
-              ...prev,
-              phase: job.status === 'running' ? 'running' : 'queued',
-              progressPercent: job.progress_percent ?? prev.progressPercent,
-              message: job.message ?? prev.message,
-            }));
-          }
-        } catch {
-          // transient poll error — keep trying
-        }
-      }, POLL_INTERVAL_MS);
+  const { start: startPolling, stop: stopPolling } = useSingleJobPoll({
+    intervalMs: JOB_POLL_INTERVAL_MS.motionMuse,
+    requireOutputPath: false,
+    onCompleted: (job: JobResult) => {
+      setState((prev) => ({
+        ...prev,
+        phase: 'completed',
+        progressPercent: 100,
+        message: job.message ?? 'Generation complete',
+        outputPath: job.output_path ?? null,
+      }));
     },
-    [stopPolling],
-  );
+    onFailed: (job: JobResult) => {
+      setState((prev) => ({
+        ...prev,
+        phase: 'failed',
+        error: job.error ?? 'Video generation failed',
+      }));
+    },
+    onRunning: (job: JobResult) => {
+      setState((prev) => ({
+        ...prev,
+        phase: job.status === 'running' ? 'running' : 'queued',
+        progressPercent: job.progress_percent ?? prev.progressPercent,
+        message: job.message ?? prev.message,
+      }));
+    },
+  });
 
   const submitJob = useCallback(
     async (opts: VideoOptions) => {

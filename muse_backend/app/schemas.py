@@ -264,7 +264,7 @@ class AgentRevisionRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "1.5.0"
     models_path: str
     models_path_exists: bool
     available_providers: dict[str, list[str]]

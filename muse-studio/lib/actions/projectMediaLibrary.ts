@@ -13,8 +13,9 @@ import {
   updateScene,
 } from '@/lib/actions/scenes';
 import { addCharacterImage } from '@/lib/actions/characters';
+import { getOutputsRoot, resolveUnderOutputs, toPosixPath } from '@/lib/server/paths';
 
-const OUTPUTS_ROOT = path.join(process.cwd(), 'outputs');
+const OUTPUTS_ROOT = getOutputsRoot();
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -25,31 +26,19 @@ export type MediaLibraryItem = {
   mtimeMs: number;
 };
 
-function toPosix(rel: string): string {
-  return rel.split(path.sep).join('/');
-}
-
-function assertNoTraversal(rel: string): void {
-  const parts = toPosix(rel).split('/').filter(Boolean);
-  if (parts.some((p) => p === '..')) throw new Error('Invalid path');
-}
-
 function fullPath(rel: string): string {
-  const n = toPosix(rel.trim());
-  assertNoTraversal(n);
-  const abs = path.join(OUTPUTS_ROOT, ...n.split('/'));
-  const resolved = path.resolve(abs);
-  if (!resolved.startsWith(path.resolve(OUTPUTS_ROOT))) {
-    throw new Error('Path escapes outputs root');
-  }
-  return resolved;
+  return resolveUnderOutputs(rel.trim());
 }
 
 /** Accept outputs produced under drafts/playground (global or project subfolder). */
 function isAllowedPlaygroundSource(sourceRelPath: string): boolean {
-  const n = toPosix(sourceRelPath.trim());
+  const n = toPosixPath(sourceRelPath.trim());
   if (!n.startsWith('drafts/playground/')) return false;
-  assertNoTraversal(n);
+  try {
+    resolveUnderOutputs(n);
+  } catch {
+    return false;
+  }
   return true;
 }
 
@@ -64,7 +53,7 @@ function copyWithinOutputs(relSrc: string, destRelDir: string): string {
   fs.mkdirSync(destDirAbs, { recursive: true });
   const destAbs = path.join(destDirAbs, name);
   fs.copyFileSync(src, destAbs);
-  return toPosix(path.relative(OUTPUTS_ROOT, destAbs));
+  return toPosixPath(path.relative(OUTPUTS_ROOT, destAbs));
 }
 
 export async function listProjectMediaLibrary(projectId: string): Promise<MediaLibraryItem[]> {
@@ -91,7 +80,7 @@ export async function listProjectMediaLibrary(projectId: string): Promise<MediaL
 
       const abs = path.join(dir, ent.name);
       const stat = fs.statSync(abs);
-      const rel = toPosix(path.relative(OUTPUTS_ROOT, abs));
+      const rel = toPosixPath(path.relative(OUTPUTS_ROOT, abs));
       items.push({ path: rel, kind, mtimeMs: stat.mtimeMs });
     }
   }
@@ -126,7 +115,7 @@ function collectImagesUnderPlayground(dir: string, items: MediaLibraryItem[]): v
       const ext = path.extname(ent.name).toLowerCase();
       if (!IMAGE_EXT.has(ext)) continue;
       const stat = fs.statSync(abs);
-      const rel = toPosix(path.relative(OUTPUTS_ROOT, abs));
+      const rel = toPosixPath(path.relative(OUTPUTS_ROOT, abs));
       if (!rel.startsWith('drafts/playground/')) continue;
       items.push({ path: rel, kind: 'image', mtimeMs: stat.mtimeMs });
     }

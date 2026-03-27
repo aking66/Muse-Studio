@@ -18,14 +18,10 @@ import type { ComfyWorkflowSummary, ComfyWorkflowFull } from '@/lib/actions/comf
 import { parseDynamicInputs, type WorkflowNode, type ComfyDynamicInput } from '@/lib/comfy-parser';
 import { addCharacterImage } from '@/lib/actions/characters';
 import { ProjectLibraryStrip } from '@/components/media/ProjectLibraryStrip';
+import { JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
+import { useSingleJobPoll } from '@/hooks/useJobPoll';
 
 type Phase = 'idle' | 'loading' | 'ready' | 'submitting' | 'polling' | 'result' | 'error';
-
-interface JobResult {
-  status: string;
-  output_path?: string;
-  error?: string;
-}
 
 interface CharacterComfyGenerateDialogProps {
   open: boolean;
@@ -34,8 +30,6 @@ interface CharacterComfyGenerateDialogProps {
   comfyImageWorkflows: ComfyWorkflowSummary[];
   onImageAttached?: (image: CharacterImage) => void;
 }
-
-const POLL_INTERVAL_MS = 2500;
 
 export function CharacterComfyGenerateDialog({
   open,
@@ -60,6 +54,20 @@ export function CharacterComfyGenerateDialog({
   const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
   const [resultOutputPath, setResultOutputPath] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const { start: startJobPoll, stop: stopJobPoll } = useSingleJobPoll({
+    intervalMs: JOB_POLL_INTERVAL_MS.fast,
+    onCompleted: (job) => {
+      if (!job.output_path) return;
+      setResultOutputPath(job.output_path);
+      setResultImageUrl(`/api/outputs/${job.output_path}`);
+      setPhase('result');
+    },
+    onFailed: (job) => {
+      setError(job.error ?? 'Generation failed.');
+      setPhase('error');
+    },
+  });
 
   // Reset dialog state whenever it is reopened or target character changes
   useEffect(() => {
@@ -174,31 +182,18 @@ export function CharacterComfyGenerateDialog({
     })();
   }, [open, selectedWorkflowId, character]);
 
-  const startPolling = useCallback((jid: string) => {
-    setPhase('polling');
-    setJobId(jid);
+  useEffect(() => {
+    if (!open) stopJobPoll();
+  }, [open, stopJobPoll]);
 
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jid}`);
-        if (!res.ok) return;
-        const job = (await res.json()) as JobResult;
-
-        if (job.status === 'completed' && job.output_path) {
-          clearInterval(timer);
-          setResultOutputPath(job.output_path);
-          setResultImageUrl(`/api/outputs/${job.output_path}`);
-          setPhase('result');
-        } else if (job.status === 'failed') {
-          clearInterval(timer);
-          setError(job.error ?? 'Generation failed.');
-          setPhase('error');
-        }
-      } catch {
-        // transient network error; keep polling
-      }
-    }, POLL_INTERVAL_MS);
-  }, []);
+  const startPolling = useCallback(
+    (jid: string) => {
+      setPhase('polling');
+      setJobId(jid);
+      startJobPoll(jid);
+    },
+    [startJobPoll],
+  );
 
   function clearFieldError(nodeId: string) {
     setFieldErrors((prev) => {

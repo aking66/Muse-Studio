@@ -2,6 +2,7 @@
 
 import { db } from '@/db';
 import type { MuseAgent } from '@/lib/types';
+import { newPrefixedId } from '@/lib/server/ids';
 
 export type MuseChatRole = 'user' | 'assistant';
 
@@ -23,10 +24,6 @@ export interface MuseChatMessage {
   createdAt: Date;
 }
 
-function newId(prefix = 'chat'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function mapRow(row: MuseChatMessageRow): MuseChatMessage {
   return {
     id: row.id,
@@ -44,7 +41,7 @@ export async function appendMuseChatMessage(input: {
   role: MuseChatRole;
   content: string;
 }): Promise<MuseChatMessage> {
-  const id = newId();
+  const id = newPrefixedId('chat');
   const now = new Date().toISOString();
 
   db.prepare(

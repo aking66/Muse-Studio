@@ -27,7 +27,7 @@ import {
   setSceneComfyVideoWorkflow,
 } from '@/lib/actions/scenes';
 import type { Scene, KanbanStatus, Keyframe, Character } from '@/lib/types';
-import type { JobResult } from '@/lib/backend-client';
+import { fetchJobFromApi, JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
 import type { ComfyWorkflowSummary } from '@/lib/actions/comfyui';
 import { useProjectStatus } from '@/components/layout/ProjectStatusContext';
 import { deriveActiveMuse } from '@/lib/derive-active-muse';
@@ -39,10 +39,6 @@ interface KanbanBoardProps {
   comfyVideoWorkflows?: ComfyWorkflowSummary[];
   characters?: Character[];
 }
-
-// Poll background video generation jobs infrequently — ComfyUI runs can take a while.
-// 3 minutes is enough to avoid spamming the backend while still updating the UI.
-const POLL_INTERVAL_MS = 1 * 60 * 1000;
 
 export function KanbanBoard({
   initialScenes,
@@ -149,9 +145,9 @@ export function KanbanBoard({
 
       for (const [sceneId, jobId] of entries) {
         try {
-          const res = await fetch(`/api/jobs/${jobId}`);
+          const r = await fetchJobFromApi(jobId);
 
-          if (res.status === 404) {
+          if (!r.ok && r.status === 404) {
             await revertToDraftQueue(
               sceneId,
               'The backend restarted and the job was lost. Please try again.',
@@ -159,9 +155,9 @@ export function KanbanBoard({
             continue;
           }
 
-          if (!res.ok) continue;
+          if (!r.ok || !r.job) continue;
 
-          const job = (await res.json()) as JobResult;
+          const job = r.job;
 
           if (job.status === 'completed' && job.output_path) {
             const videoUrl = `/api/outputs/${job.output_path}`;
@@ -215,7 +211,7 @@ export function KanbanBoard({
           pollJobs(current);
           return current;
         });
-      }, POLL_INTERVAL_MS);
+      }, JOB_POLL_INTERVAL_MS.background);
     }
 
     return () => {

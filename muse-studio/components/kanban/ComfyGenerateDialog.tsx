@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   X, Workflow, AlertCircle, CheckCircle2, Image as ImageIcon,
@@ -20,6 +20,15 @@ import {
   type WorkflowNode,
 } from '@/lib/comfy-parser';
 import { ProjectLibraryStrip } from '@/components/media/ProjectLibraryStrip';
+import { JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
+import { useSingleJobPoll } from '@/hooks/useJobPoll';
+import {
+  buildComfyUiGeneratePayload,
+  buildPluginProviderPayload,
+  mergeComfyMergedValues,
+  promptFromFirstTextInput,
+  referenceImagesFromFilePaths,
+} from '@/lib/generation/comfyPluginGeneration';
 
 interface ComfyGenerateDialogProps {
   isOpen: boolean;
@@ -37,14 +46,6 @@ interface ComfyGenerateDialogProps {
 }
 
 type Phase = 'loading' | 'idle' | 'submitting' | 'polling' | 'result' | 'error';
-
-interface JobResult {
-  status: string;
-  output_path?: string;
-  error?: string;
-}
-
-const POLL_INTERVAL = 2500;
 
 type PluginProviderSummary = {
   id: string;
@@ -90,8 +91,21 @@ export function ComfyGenerateDialog({
   const [showValidationBanner, setShowValidationBanner] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
 
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const firstErrorRef = useRef<HTMLDivElement | null>(null);
+
+  const { start: startPolling, stop: stopPolling } = useSingleJobPoll({
+    intervalMs: JOB_POLL_INTERVAL_MS.fast,
+    onCompleted: (job) => {
+      if (!job.output_path) return;
+      setResultImageUrl(`/api/outputs/${job.output_path}`);
+      setResultOutputPath(job.output_path);
+      setPhase('result');
+    },
+    onFailed: (job) => {
+      setError(job.error ?? 'Generation failed.');
+      setPhase('error');
+    },
+  });
 
   // ── Load workflow on open ──────────────────────────────────────────────────
   useEffect(() => {
@@ -226,14 +240,11 @@ export function ComfyGenerateDialog({
     })();
   }, [isOpen, activeWorkflowId, scene, kind, onWorkflowInvalid]);
 
-  // ── Cleanup polling on close ───────────────────────────────────────────────
+  // ── Stop job polling when dialog closes ─────────────────────────────────────
 
   useEffect(() => {
-    if (!isOpen && pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, [isOpen]);
+    if (!isOpen) stopPolling();
+  }, [isOpen, stopPolling]);
 
   // ── Input handlers ─────────────────────────────────────────────────────────
 
@@ -319,42 +330,10 @@ export function ComfyGenerateDialog({
     return !hasErrors;
   }
 
-  // ── Polling ────────────────────────────────────────────────────────────────
-
-  const startPolling = useCallback(
-    (jid: string) => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-
-      pollingRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/jobs/${jid}`);
-          if (!res.ok) return;
-          const job = (await res.json()) as JobResult;
-
-          if (job.status === 'completed' && job.output_path) {
-            clearInterval(pollingRef.current!);
-            pollingRef.current = null;
-            setResultImageUrl(`/api/outputs/${job.output_path}`);
-            setResultOutputPath(job.output_path);
-            setPhase('result');
-          } else if (job.status === 'failed') {
-            clearInterval(pollingRef.current!);
-            pollingRef.current = null;
-            setError(job.error ?? 'Generation failed.');
-            setPhase('error');
-          }
-        } catch {
-          // transient
-        }
-      }, POLL_INTERVAL);
-    },
-    [],
-  );
-
   // ── Generate ───────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
-    if (!scene) return;
+    if (!scene || !kind) return;
     if (providerMode === 'comfyui' && !activeWorkflowId) return;
     if (providerMode === 'plugin' && !activePluginId) {
       setError('No enabled plugin provider found for this capability.');
@@ -366,52 +345,29 @@ export function ComfyGenerateDialog({
     setPhase('submitting');
     setError(null);
 
-    // Merge uploaded file paths (for image/audio) into inputValues for submission
-    const mergedValues: Record<string, string | number | null> = { ...inputValues };
-    for (const [nodeId, relPath] of Object.entries(filePaths)) {
-      mergedValues[nodeId] = relPath;
-    }
+    const mergedValues = mergeComfyMergedValues(inputValues, filePaths);
+    const prompt = promptFromFirstTextInput(inputs, mergedValues);
+    const referenceImages = referenceImagesFromFilePaths(filePaths);
 
     try {
-      const textInputs = inputs.filter((i) => i.kind === 'textarea' || i.kind === 'text');
-      const firstPromptNode = textInputs[0]?.nodeId;
-      const prompt = firstPromptNode ? String(mergedValues[firstPromptNode] ?? '').trim() : '';
-      const referenceImages = Object.values(filePaths).map((relPath) => ({
-        url: `/api/outputs/${relPath}`,
-      }));
-
       const route = providerMode === 'comfyui' ? '/api/generate/comfyui' : '/api/generate/plugin-provider';
       const reqBody =
         providerMode === 'comfyui'
-          ? {
-              workflow_id: activeWorkflowId,
-              scene_id: scene.id,
+          ? buildComfyUiGeneratePayload({
+              workflowId: activeWorkflowId!,
+              sceneId: scene.id,
               kind,
-              inputValues: mergedValues,
-            }
-          : {
-              plugin_id: activePluginId,
-              scene_id: scene.id,
+              mergedValues,
+            })
+          : buildPluginProviderPayload({
+              pluginId: activePluginId!,
+              sceneId: scene.id,
               kind,
-              input:
-                kind === 'image'
-                  ? {
-                      projectId: undefined,
-                      sceneId: scene.id,
-                      prompt: prompt || scene.description || 'Generate image',
-                      generationParams: {},
-                      referenceImages,
-                      pluginParams: { rawInputs: mergedValues },
-                    }
-                  : {
-                      projectId: undefined,
-                      sceneId: scene.id,
-                      prompt: prompt || undefined,
-                      sourceImages: referenceImages,
-                      generationParams: {},
-                      pluginParams: { rawInputs: mergedValues },
-                    },
-            };
+              mergedValues,
+              referenceImages,
+              prompt,
+              imagePromptFallback: scene.description || 'Generate image',
+            });
 
       const res = await fetch(route, {
         method: 'POST',
@@ -428,12 +384,14 @@ export function ComfyGenerateDialog({
           const fallbackRes = await fetch('/api/generate/comfyui', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              workflow_id: activeWorkflowId,
-              scene_id: scene.id,
-              kind,
-              inputValues: mergedValues,
-            }),
+            body: JSON.stringify(
+              buildComfyUiGeneratePayload({
+                workflowId: activeWorkflowId!,
+                sceneId: scene.id,
+                kind,
+                mergedValues,
+              }),
+            ),
           });
           const fallbackData = await fallbackRes.json();
           if (fallbackRes.ok && fallbackData?.job_id) {

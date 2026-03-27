@@ -16,6 +16,8 @@ from app.api.routes import agent, generate, providers, jobs, llm, inference_sett
 from app.schemas import HealthResponse
 from app.registry import get_all_provider_info
 
+APP_VERSION = "1.5.0"
+
 # ── App instance ──────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -25,7 +27,7 @@ app = FastAPI(
         "Provides Story Muse (LLM), Visual Muse (image generation), "
         "and Motion Muse (video generation) capabilities."
     ),
-    version="0.1.0",
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -73,6 +75,7 @@ async def health_check():
 
     return HealthResponse(
         status="ok",
+        version=APP_VERSION,
         models_path=str(models_path),
         models_path_exists=models_path.exists(),
         available_providers=available,
@@ -83,7 +86,7 @@ async def health_check():
 async def root():
     return {
         "service": "Muse Agent Backend",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "docs": "/docs",
         "health": "/health",
     }

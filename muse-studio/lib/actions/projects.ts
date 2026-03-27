@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import path from 'path';
+import { newPrefixedId } from '@/lib/server/ids';
+import { getOutputsRoot, normalizeStoredOutputsReference } from '@/lib/server/paths';
 import fs from 'fs';
 import { db } from '@/db';
 import type { Project, Scene, Keyframe, StorylineContent, ImageAsset } from '@/lib/types';
@@ -180,10 +182,6 @@ function loadScenesForProject(projectId: string): Scene[] {
   });
 }
 
-function newId(prefix = 'id'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /** Return all projects with scenes (no keyframes loaded — for list view). */
@@ -231,7 +229,7 @@ export async function createProject(data: {
   storylineSource: 'MUSE_GENERATED' | 'UPLOAD' | 'MANUAL';
   museControlLevel?: Project['museControlLevel'];
 }): Promise<Project> {
-  const id = newId('proj');
+  const id = newPrefixedId('proj');
   const now = new Date().toISOString();
 
   db.prepare(`
@@ -346,41 +344,13 @@ export async function deleteProjectAndAssets(projectId: string): Promise<void> {
   }
 
   // Collect file paths before deleting DB rows
-  const outputsRoot = path.join(process.cwd(), 'outputs');
+  const outputsRoot = getOutputsRoot();
   const filePaths = new Set<string>();
 
-  const normalizeOutputsRelative = (value: string | null): string | null => {
-    if (!value) return null;
-    let rel = value.trim();
-    if (!rel) return null;
-
-    const prefix = '/api/outputs/';
-    const idx = rel.indexOf(prefix);
-    if (idx !== -1) {
-      rel = rel.slice(idx + prefix.length);
-    }
-
-    // Strip protocol/host if present, keep only path after /api/outputs/
-    if (rel.startsWith('http://') || rel.startsWith('https://')) {
-      try {
-        const url = new URL(rel);
-        const p = url.pathname;
-        const pIdx = p.indexOf(prefix);
-        if (pIdx !== -1) {
-          rel = p.slice(pIdx + prefix.length);
-        }
-      } catch {
-        // fall through and use raw rel
-      }
-    }
-
-    rel = rel.replace(/^[/\\]+/, '').replace(/\\/g, '/');
-    return rel || null;
-  };
-
   const addRelative = (rel: string | null) => {
-    if (!rel) return;
-    const abs = path.normalize(path.join(outputsRoot, rel));
+    const normalized = normalizeStoredOutputsReference(rel);
+    if (!normalized) return;
+    const abs = path.normalize(path.join(outputsRoot, normalized));
     if (!abs.startsWith(outputsRoot)) return;
     filePaths.add(abs);
   };
@@ -395,8 +365,8 @@ export async function deleteProjectAndAssets(projectId: string): Promise<void> {
     )
     .all(projectId);
   for (const kf of keyframeRows) {
-    addRelative(normalizeOutputsRelative(kf.draft_image_path));
-    addRelative(normalizeOutputsRelative(kf.final_image_path));
+    addRelative(kf.draft_image_path);
+    addRelative(kf.final_image_path);
   }
 
   // Reference images (stored as URLs)
@@ -410,7 +380,7 @@ export async function deleteProjectAndAssets(projectId: string): Promise<void> {
     )
     .all(projectId);
   for (const ref of refRows) {
-    addRelative(normalizeOutputsRelative(ref.url));
+    addRelative(ref.url);
   }
 
   // Scene video URLs
@@ -420,7 +390,7 @@ export async function deleteProjectAndAssets(projectId: string): Promise<void> {
     )
     .all(projectId);
   for (const scene of sceneVideoRows) {
-    addRelative(normalizeOutputsRelative(scene.video_url));
+    addRelative(scene.video_url);
   }
 
   // Generation job outputs
@@ -433,7 +403,7 @@ export async function deleteProjectAndAssets(projectId: string): Promise<void> {
     )
     .all(projectId);
   for (const job of jobRows) {
-    addRelative(normalizeOutputsRelative(job.output_path));
+    addRelative(job.output_path);
   }
 
   // Project-scoped playground + promoted library folders (may not be referenced in DB rows)

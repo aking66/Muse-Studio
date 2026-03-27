@@ -47,9 +47,17 @@ import {
   type WorkflowNode,
 } from '@/lib/comfy-parser';
 import { cn } from '@/lib/utils';
+import { JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
+import { useSingleJobPoll } from '@/hooks/useJobPoll';
+import {
+  buildComfyUiGeneratePayload,
+  buildPluginProviderPayload,
+  mergeComfyMergedValues,
+  promptFromFirstTextInput,
+  referenceImagesFromFilePaths,
+} from '@/lib/generation/comfyPluginGeneration';
 
 const PLAYGROUND_SCENE_ID = 'playground';
-const POLL_MS = 2500;
 
 export interface PlaygroundProjectSummary {
   id: string;
@@ -73,12 +81,6 @@ type PluginProviderSummary = {
 };
 
 type Phase = 'loading' | 'idle' | 'submitting' | 'polling' | 'result' | 'error';
-
-interface JobPayload {
-  status: string;
-  output_path?: string;
-  error?: string;
-}
 
 const STAGE_LABEL: Record<ProjectStage, string> = {
   STORYLINE: 'Storyline',
@@ -146,14 +148,21 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
   const [playgroundLibItems, setPlaygroundLibItems] = useState<MediaLibraryItem[]>([]);
   const [playgroundLibLoading, setPlaygroundLibLoading] = useState(false);
 
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const firstErrorRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
+  const { start: startPolling } = useSingleJobPoll({
+    intervalMs: JOB_POLL_INTERVAL_MS.fast,
+    onCompleted: (job) => {
+      if (!job.output_path) return;
+      setResultUrl(`/api/outputs/${job.output_path}`);
+      setResultPath(job.output_path);
+      setPhase('result');
+    },
+    onFailed: (job) => {
+      setError(job.error ?? 'Generation failed.');
+      setPhase('error');
+    },
+  });
 
   // Pick first workflow when kind or list changes
   useEffect(() => {
@@ -497,31 +506,6 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
     }
   }
 
-  const startPolling = useCallback((jid: string) => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    pollingRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jid}`);
-        if (!res.ok) return;
-        const job = (await res.json()) as JobPayload;
-        if (job.status === 'completed' && job.output_path) {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          setResultUrl(`/api/outputs/${job.output_path}`);
-          setResultPath(job.output_path);
-          setPhase('result');
-        } else if (job.status === 'failed') {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          setError(job.error ?? 'Generation failed.');
-          setPhase('error');
-        }
-      } catch {
-        /* transient */
-      }
-    }, POLL_MS);
-  }, []);
-
   async function handleGenerate() {
     if (!validateInputs()) return;
     if (providerMode === 'comfyui' && !activeWorkflowId) return;
@@ -532,57 +516,31 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
     }
     setPhase('submitting');
     setError(null);
-    const merged: Record<string, string | number | null> = { ...inputValues };
-    for (const [nodeId, relPath] of Object.entries(filePaths)) {
-      merged[nodeId] = relPath;
-    }
+    const merged = mergeComfyMergedValues(inputValues, filePaths);
+    const prompt = promptFromFirstTextInput(inputs, merged);
+    const referenceImages = referenceImagesFromFilePaths(filePaths);
     try {
       const route =
         providerMode === 'comfyui' ? '/api/generate/comfyui' : '/api/generate/plugin-provider';
-      const textInputs = inputs.filter((inp) => inp.kind === 'text' || inp.kind === 'textarea');
-      const promptNode = textInputs[0]?.nodeId;
-      const prompt = promptNode ? String(merged[promptNode] ?? '').trim() : '';
-      const referenceImages = Object.entries(filePaths).map(([nodeId, relPath]) => ({
-        url: `/api/outputs/${relPath}`,
-      }));
-
       const payload =
         providerMode === 'comfyui'
-          ? {
-              workflow_id: activeWorkflowId,
-              scene_id: PLAYGROUND_SCENE_ID,
+          ? buildComfyUiGeneratePayload({
+              workflowId: activeWorkflowId!,
+              sceneId: PLAYGROUND_SCENE_ID,
               kind,
-              inputValues: merged,
-              ...(chatProjectId ? { project_id: chatProjectId } : {}),
-            }
-          : {
-              plugin_id: activePluginId,
-              scene_id: PLAYGROUND_SCENE_ID,
+              mergedValues: merged,
+              projectId: chatProjectId,
+            })
+          : buildPluginProviderPayload({
+              pluginId: activePluginId!,
+              sceneId: PLAYGROUND_SCENE_ID,
               kind,
-              ...(chatProjectId ? { project_id: chatProjectId } : {}),
-              input:
-                kind === 'image'
-                  ? {
-                      projectId: chatProjectId ?? undefined,
-                      sceneId: PLAYGROUND_SCENE_ID,
-                      prompt: prompt || 'Generate image',
-                      generationParams: {},
-                      referenceImages,
-                      pluginParams: {
-                        rawInputs: merged,
-                      },
-                    }
-                  : {
-                      projectId: chatProjectId ?? undefined,
-                      sceneId: PLAYGROUND_SCENE_ID,
-                      prompt: prompt || undefined,
-                      sourceImages: referenceImages,
-                      generationParams: {},
-                      pluginParams: {
-                        rawInputs: merged,
-                      },
-                    },
-            };
+              mergedValues: merged,
+              referenceImages,
+              prompt,
+              projectId: chatProjectId,
+              imagePromptFallback: 'Generate image',
+            });
 
       const res = await fetch(route, {
         method: 'POST',
@@ -596,13 +554,15 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
           const fallbackRes = await fetch('/api/generate/comfyui', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              workflow_id: activeWorkflowId,
-              scene_id: PLAYGROUND_SCENE_ID,
-              kind,
-              inputValues: merged,
-              ...(chatProjectId ? { project_id: chatProjectId } : {}),
-            }),
+            body: JSON.stringify(
+              buildComfyUiGeneratePayload({
+                workflowId: activeWorkflowId!,
+                sceneId: PLAYGROUND_SCENE_ID,
+                kind,
+                mergedValues: merged,
+                projectId: chatProjectId,
+              }),
+            ),
           });
           const fallbackData = await fallbackRes.json();
           if (fallbackRes.ok && fallbackData?.job_id) {

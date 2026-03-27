@@ -9,6 +9,7 @@ import type {
   ImageAsset,
   StorylineContent,
 } from '@/lib/types';
+import { newPrefixedId } from '@/lib/server/ids';
 
 interface CharacterRow {
   id: string;
@@ -36,10 +37,6 @@ interface CharacterImageRow {
   notes: string | null;
   created_at: string;
   updated_at: string;
-}
-
-function newId(prefix = 'id'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function mapImageRow(row: CharacterImageRow): CharacterImage {
@@ -167,7 +164,7 @@ interface CreateCharacterInput {
 }
 
 export async function createCharacter(input: CreateCharacterInput): Promise<Character> {
-  const id = newId('char');
+  const id = newPrefixedId('char');
   const now = new Date().toISOString();
 
   db.prepare(
@@ -266,7 +263,7 @@ interface AddCharacterImageInput {
 }
 
 export async function addCharacterImage(input: AddCharacterImageInput): Promise<CharacterImage> {
-  const id = newId('charimg');
+  const id = newPrefixedId('charimg');
   const now = new Date().toISOString();
 
   db.prepare(

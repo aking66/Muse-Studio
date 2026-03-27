@@ -2,26 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { callEnabledPluginsForCapability } from '@/lib/actions/plugins';
+import { resolveUnderOutputs, toPosixPath } from '@/lib/server/paths';
 import type {
   MuseImageGenerateInput,
   MuseImageGenerateOutput,
   MuseVideoGenerateInput,
   MuseVideoGenerateOutput,
 } from '@/lib/plugin-extension/provider-contracts';
-
-const OUTPUTS_ROOT = path.join(process.cwd(), 'outputs');
-
-function toPosix(rel: string): string {
-  return rel.split(path.sep).join('/');
-}
-
-function safeResolveUnderOutputs(rel: string): string {
-  const cleaned = toPosix(rel).replace(/^\/+/, '');
-  const abs = path.resolve(path.join(OUTPUTS_ROOT, ...cleaned.split('/')));
-  const root = path.resolve(OUTPUTS_ROOT);
-  if (!abs.startsWith(root)) throw new Error('Invalid output path');
-  return abs;
-}
 
 function extFromInput(value: string, fallback: '.png' | '.mp4'): string {
   try {
@@ -44,7 +31,7 @@ async function writeFromUrl(url: string, absDest: string): Promise<void> {
 }
 
 function copyFromOutputRel(relPath: string, absDest: string): void {
-  const src = safeResolveUnderOutputs(relPath);
+  const src = resolveUnderOutputs(relPath);
   if (!fs.existsSync(src)) throw new Error('Plugin output path does not exist under outputs/');
   fs.mkdirSync(path.dirname(absDest), { recursive: true });
   fs.copyFileSync(src, absDest);
@@ -57,8 +44,8 @@ export async function normalizePluginOutputToOutputs(params: {
 }): Promise<string> {
   const ext = extFromInput(params.value, params.kind === 'image' ? '.png' : '.mp4');
   const filename = `${randomUUID()}${ext}`;
-  const relOut = toPosix(path.join(params.targetRelDir, filename));
-  const absOut = safeResolveUnderOutputs(relOut);
+  const relOut = toPosixPath(path.join(params.targetRelDir, filename));
+  const absOut = resolveUnderOutputs(relOut);
 
   if (params.value.startsWith('/api/outputs/')) {
     const rel = params.value.replace(/^\/api\/outputs\//, '');

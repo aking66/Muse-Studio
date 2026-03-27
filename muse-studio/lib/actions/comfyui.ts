@@ -2,10 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { db } from '@/db';
-
-function newId(prefix = 'id'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
+import { newPrefixedId } from '@/lib/server/ids';
 
 export interface ComfyWorkflowSummary {
   id: string;
@@ -72,7 +69,7 @@ export async function registerComfyWorkflow(data: {
   kind: 'image' | 'video';
   json: string;
 }): Promise<string> {
-  const id = newId('wf');
+  const id = newPrefixedId('wf');
   const now = new Date().toISOString();
   db.prepare(
     'INSERT INTO comfy_workflows (id, name, description, kind, json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',

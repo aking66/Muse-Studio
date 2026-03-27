@@ -7,10 +7,7 @@ import {
   generateSceneSuggestions,
   generateVideoSuggestions,
 } from '@/lib/actions/muse-agent';
-
-function newId(prefix = 'id'): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
+import { newPrefixedId } from '@/lib/server/ids';
 
 // ─── Scene Actions ─────────────────────────────────────────────────────────────
 
@@ -23,7 +20,7 @@ export async function createScene(data: {
   dialogue?: string;
   technicalNotes?: string;
 }): Promise<string> {
-  const id = newId('scene');
+  const id = newPrefixedId('scene');
   const now = new Date().toISOString();
 
   const maxRow = db
@@ -180,7 +177,7 @@ export async function createKeyframe(data: {
   styleStrength?: number;
   aspectRatio?: string;
 }): Promise<string> {
-  const id = newId('kf');
+  const id = newPrefixedId('kf');
   const now = new Date().toISOString();
 
   const maxRow = db
@@ -252,7 +249,7 @@ export async function createGenerationJob(data: {
   providerId: string;
   backendJobId?: string;
 }): Promise<string> {
-  const id = newId('job');
+  const id = newPrefixedId('job');
   const now = new Date().toISOString();
 
   db.prepare(`

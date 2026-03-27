@@ -28,14 +28,19 @@ Use this for endpoint request/response payloads your plugin serves.
 
 In short: **this is the runtime generation contract**.
 
-### Important Note (Current Host Build)
+### Canonical source of truth (host + authors)
 
-Muse host code may also use mirrored runtime-safe types under:
+| Concern | Package | Edit here (not in the app) |
+|--------|---------|----------------------------|
+| Manifest Zod schema, `parsePluginManifest`, version helpers | `@muse/plugin-sdk` (`packages/plugin-sdk`) | `packages/plugin-sdk/src/manifest.ts` |
+| Image/video capability DTOs, hook call envelope | `@muse/plugin-host` (`packages/plugin-host`) | `packages/plugin-host/src/contract.ts` |
 
-- `muse-studio/lib/plugin-extension/*`
+Muse Studio imports these workspace packages (`file:` dependencies + `transpilePackages` in `next.config.ts`) and exposes thin re-exports under `muse-studio/lib/plugin-extension/*` for stable `@/` imports. Those files **must not** duplicate schemas—only re-export from the packages above.
 
-This exists for Next/Turbopack host compatibility.  
-For plugin authors, treat `packages/plugin-sdk` + `packages/plugin-host` as the source contracts.
+**Build / tooling notes (contributors):**
+
+- Production and dev scripts use **`next build --webpack`** / **`next dev --webpack`** so webpack resolves `@muse/*` from `muse-studio/node_modules` and nested deps (Turbopack + Windows has known gaps for this layout).
+- Run **`npm install` inside `packages/plugin-sdk`** once so `zod` exists next to the SDK sources when the bundler follows `file:` links into `packages/`.
 
 ### How these sections connect
 
@@ -97,7 +102,7 @@ At a minimum your manifest must include:
 {
   "id": "my-company-comfyui-nodepack",
   "name": "My NodePack Extension",
-  "version": "0.1.0",
+  "version": "1.5.0",
   "author": "My Company",
   "description": "Adds image.generate support via an external service.",
   "museApiVersion": "1",

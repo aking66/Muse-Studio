@@ -1,19 +1,15 @@
 import { NextRequest } from 'next/server';
 import { getProjectById } from '@/lib/actions/projects';
 import { getLLMSettings } from '@/lib/actions/settings';
-import type { Project } from '@/lib/types';
-
-const DEFAULT_MISSING_API_KEY_MSG =
-  'Set the API key in muse-studio/.env.local (or your deployment environment) and restart the dev server.';
-
-function openRouterOptionalHeaders(): Record<string, string> {
-  const h: Record<string, string> = {};
-  const referer = process.env.OPENROUTER_HTTP_REFERER?.trim();
-  const title = process.env.OPENROUTER_APP_TITLE?.trim();
-  if (referer) h['HTTP-Referer'] = referer;
-  if (title) h['X-Title'] = title;
-  return h;
-}
+import { openRouterOptionalHeaders } from '@/lib/generation/openRouterHeaders';
+import {
+  STORY_GENERATION_SYSTEM_PROMPTS,
+  formatProjectForRag,
+  streamStoryLMStudio,
+  streamStoryOllama,
+  streamStoryOpenAICompat,
+  storySseError,
+} from '@/lib/generation/storyGenerationInternals';
 
 /**
  * POST /api/generate/story
@@ -28,520 +24,6 @@ function openRouterOptionalHeaders(): Record<string, string> {
  * When project_id is present in the body, the project's storyline and script are
  * injected as project_context for RAG.
  */
-
-// ── System prompts per task ──────────────────────────────────────────────────
-
-const SYSTEM_PROMPTS: Record<string, string> = {
-  generate_storyline: `You are Story Muse, a creative AI assistant specializing in film narrative development.
-
-Generate a complete storyline outline. Structure your response using EXACTLY these section headers:
-
-## LOGLINE
-(one cinematic sentence capturing the core premise and emotional hook)
-
-## PLOT OUTLINE
-(2–3 paragraphs: setup → confrontation → resolution)
-
-## CHARACTERS
-- Character Name — Role and brief description
-- Character Name — Role and brief description
-(list all major characters, one per line starting with -)
-
-## THEMES
-- Theme 1
-- Theme 2
-- Theme 3
-(list 3–5 thematic elements, one per line starting with -)
-
-## GENRE
-(genre / subgenre)
-
-Be cinematic, evocative and specific. Do not include any commentary outside these sections.`,
-
-  write_scene_script: `You are Story Muse, a professional screenwriter AI.
-Write a properly formatted scene script: scene heading (INT./EXT. LOCATION — TIME), action lines, and dialogue.
-Follow standard screenplay format. Be cinematic and specific.`,
-
-  refine_dialogue: `You are Story Muse, an expert dialogue editor.
-Improve the provided dialogue for naturalness, character voice, and dramatic impact.
-Preserve original intent while enhancing subtext and rhythm.`,
-
-  general_query: `You are Story Muse, a creative AI assistant for filmmakers.
-Help with any aspect of film narrative, script writing, character development, or story structure.
-Be concise, specific, and cinematically literate.`,
-
-  rewrite_scene: `You are Story Muse, a professional screenplay writer.
-You are given an existing scene. Rewrite or improve it according to the user's specific instructions.
-Preserve the scene heading (INT./EXT. LOCATION — TIME) unless explicitly told to change it.
-Apply all requested changes and output the COMPLETE rewritten scene in standard screenplay format:
-  - Scene heading line
-  - Action/description paragraphs
-  - Dialogue blocks (CHARACTER NAME on its own line, then dialogue)
-Do not include any commentary, preamble, or explanation — output only the rewritten scene script.`,
-
-  visual_keyframe_prompt: `You are Visual Muse, an expert in cinematic imagery and AI image generation.
-Your job is to write a single rich text-to-image prompt based on the scene provided.
-Write the prompt as one flowing paragraph that covers: the main subject and their action, the environment and set design, the lighting quality and source, the camera angle and lens, the mood and atmosphere, the color palette, and end with comma-separated quality/style tags such as: cinematic, film grain, 4K, photorealistic, award-winning cinematography.
-Write the prompt directly — do not add a label, heading, or explanation before or after it.`,
-
-  visual_query: `You are Visual Muse, an expert in cinematic imagery, composition, and visual style for film.
-Answer questions about keyframe ideas, visual style, color palettes, lighting, composition, and reference imagery.
-Be concise and specific. For actual keyframe image generation, the user uses the Keyframe Creation scene cards on the Kanban board.`,
-
-  motion_query: `You are Motion Muse, an expert in video production, pacing, and motion design for film.
-Answer questions about video duration, camera movement, pacing, editing, and video generation parameters.
-Be concise and specific. For actual video generation, the user uses the Video Draft Queue scene cards on the Kanban board.`,
-
-  default: `You are Story Muse, a creative AI assistant for filmmakers.
-Help with film narrative, script writing, and story development.`,
-};
-
-// ── SSE helpers ───────────────────────────────────────────────────────────────
-
-/** Format a project as a single string for LLM RAG context. */
-function formatProjectForRag(project: Project): string {
-  const lines: string[] = [];
-
-  lines.push(`Project: ${project.title}`);
-  if (project.description) {
-    lines.push(`Description: ${project.description}`);
-  }
-
-  if (project.storyline) {
-    lines.push('---');
-    lines.push('Storyline');
-    if (project.storyline.logline) {
-      lines.push(`Logline: ${project.storyline.logline}`);
-    }
-    lines.push(`Plot: ${project.storyline.plotOutline}`);
-    if (project.storyline.genre) {
-      lines.push(`Genre: ${project.storyline.genre}`);
-    }
-    if (project.storyline.characters?.length) {
-      lines.push(`Characters: ${project.storyline.characters.join(', ')}`);
-    }
-    if (project.storyline.themes?.length) {
-      lines.push(`Themes: ${project.storyline.themes.join(', ')}`);
-    }
-  }
-
-  if (project.scenes?.length) {
-    lines.push('---');
-    lines.push('Scenes');
-    const sorted = [...project.scenes].sort((a, b) => a.sceneNumber - b.sceneNumber);
-    for (const scene of sorted) {
-      lines.push(`Scene ${scene.sceneNumber}: ${scene.title || scene.heading || 'Untitled'}`);
-      if (scene.heading && scene.heading !== scene.title) {
-        lines.push(`  Heading: ${scene.heading}`);
-      }
-      if (scene.description) {
-        lines.push(`  Description: ${scene.description}`);
-      }
-      if (scene.dialogue) {
-        lines.push(`  Dialogue: ${scene.dialogue}`);
-      }
-      if (scene.technicalNotes) {
-        lines.push(`  Notes: ${scene.technicalNotes}`);
-      }
-    }
-  }
-
-  return lines.join('\n');
-}
-
-function sseChunk(text: string, isFinal = false): string {
-  return `data: ${JSON.stringify({ text, is_final: isFinal })}\n\n`;
-}
-
-function sseThinkingChunk(thinking: string): string {
-  return `data: ${JSON.stringify({ thinking, is_final: false })}\n\n`;
-}
-
-function sseError(message: string): Response {
-  const body = `data: ${JSON.stringify({ error: message, is_final: true })}\n\n`;
-  return new Response(body, {
-    status: 503,
-    headers: { 'Content-Type': 'text/event-stream' },
-  });
-}
-
-function sseStream(stream: ReadableStream<string>): Response {
-  return new Response(stream as unknown as ReadableStream<Uint8Array>, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'X-Accel-Buffering': 'no',
-      Connection: 'keep-alive',
-    },
-  });
-}
-
-// ── Ollama provider ───────────────────────────────────────────────────────────
-
-async function streamOllama(opts: {
-  baseUrl: string;
-  model: string;
-  systemPrompt: string;
-  userMessage: string;
-  maxTokens?: number;
-  temperature?: number;
-  /** When true, disable extended thinking mode on supported Ollama models. */
-  disableThinking?: boolean;
-}): Promise<Response> {
-  const { baseUrl, model, systemPrompt, userMessage, maxTokens, temperature, disableThinking } =
-    opts;
-  const cleanUrl = baseUrl.replace(/\/+$/, '');
-
-  // Large models (e.g. qwen3-vl:32b at 21 GB) can take several minutes to load from disk.
-  // We use a generous 15-minute overall timeout. While the model is loading, Ollama holds
-  // the connection open — we send keep-alive SSE comments so the browser doesn't time out.
-  const OLLAMA_TIMEOUT_MS = 15 * 60 * 1000;
-
-  let upstream: globalThis.Response;
-  try {
-    upstream = await fetch(`${cleanUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        stream: true,
-        // For image prompt creation we disable extended thinking mode (Qwen3 / qwen3.5 models).
-        // Without this, thinking models stream everything through message.thinking and leave
-        // message.content empty, resulting in a blank UI response.
-        ...(disableThinking && { think: false }),
-        // Only include options when there's something to set — empty options {} can
-        // cause 400 errors with certain Ollama cloud-backed models.
-        ...( (temperature != null || maxTokens != null) && {
-          options: {
-            ...(temperature != null && { temperature }),
-            ...(maxTokens != null && { num_predict: maxTokens }),
-          },
-        }),
-      }),
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
-    });
-  } catch (err) {
-    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
-    return sseError(
-      isTimeout
-        ? `Ollama timed out loading model "${model}". The model may be too large. Try a smaller model in Settings → LLM.`
-        : `Cannot connect to Ollama at ${cleanUrl}. Is it running? Try: ollama serve`,
-    );
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    let detail = '';
-    try {
-      detail = await upstream.clone().text();
-    } catch { /* ignore */ }
-    const msg = detail ? `Ollama HTTP ${upstream.status}: ${detail.slice(0, 200)}` : `Ollama returned HTTP ${upstream.status}`;
-    return sseError(msg);
-  }
-
-  // Convert Ollama ndjson stream → our SSE format.
-  // Send SSE keep-alive comments while waiting for first tokens (model loading).
-  const readable = new ReadableStream<string>({
-    async start(controller) {
-      const reader = upstream.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let firstTokenReceived = false;
-
-      // Keep-alive: send a comment every 5 seconds while model is loading
-      // SSE comments (": ping\n\n") are ignored by the hook but keep the connection alive
-      const keepAliveInterval = setInterval(() => {
-        if (!firstTokenReceived) {
-          controller.enqueue(': ping\n\n');
-        }
-      }, 5000);
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const json = JSON.parse(line) as {
-                message?: { content?: string; thinking?: string };
-                done?: boolean;
-              };
-              const content = json.message?.content ?? '';
-              const thinking = json.message?.thinking ?? '';
-              const isFinal = json.done === true;
-
-              if (thinking) {
-                firstTokenReceived = true;
-                controller.enqueue(sseThinkingChunk(thinking));
-              }
-              if (content) {
-                firstTokenReceived = true;
-                controller.enqueue(sseChunk(content, false));
-              }
-              if (isFinal) {
-                controller.enqueue(sseChunk('', true));
-              }
-            } catch {
-              // skip malformed line
-            }
-          }
-        }
-        controller.enqueue(sseChunk('', true));
-      } catch (err) {
-        controller.enqueue(
-          `data: ${JSON.stringify({ error: String(err), is_final: true })}\n\n`,
-        );
-      } finally {
-        clearInterval(keepAliveInterval);
-        controller.close();
-      }
-    },
-  });
-
-  return sseStream(readable);
-}
-
-// ── OpenAI-compatible provider (OpenAI + Claude) ──────────────────────────────
-
-async function streamOpenAICompat(opts: {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  systemPrompt: string;
-  userMessage: string;
-  maxTokens?: number;
-  temperature?: number;
-  providerName?: string;
-  /** Merged into request headers (e.g. OpenRouter HTTP-Referer / X-Title). */
-  extraHeaders?: Record<string, string>;
-  /** Shown when apiKey is empty; defaults to Next.js .env.local hint. */
-  missingKeyMessage?: string;
-}): Promise<Response> {
-  const {
-    baseUrl,
-    apiKey,
-    model,
-    systemPrompt,
-    userMessage,
-    maxTokens = 2048,
-    temperature = 0.8,
-    providerName = 'API',
-    extraHeaders,
-    missingKeyMessage = DEFAULT_MISSING_API_KEY_MSG,
-  } = opts;
-
-  const cleanBase = baseUrl.replace(/\/+$/, '');
-
-  if (!apiKey) {
-    return sseError(`${providerName} API key not configured. ${missingKeyMessage}`);
-  }
-
-  let upstream: globalThis.Response;
-  try {
-    upstream = await fetch(`${cleanBase}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        // Anthropic needs this header
-        ...(cleanBase.includes('anthropic') && { 'anthropic-version': '2023-06-01' }),
-        ...extraHeaders,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: maxTokens,
-        temperature: Math.min(temperature, 1.0),
-        stream: true,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-  } catch {
-    return sseError(`Cannot connect to ${providerName} API.`);
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    let detail = `HTTP ${upstream.status}`;
-    try {
-      const body = await upstream.clone().json();
-      detail = body?.error?.message ?? detail;
-    } catch {
-      // ignore
-    }
-    return sseError(`${providerName} error: ${detail}`);
-  }
-
-  // Convert OpenAI SSE → our SSE format
-  const readable = new ReadableStream<string>({
-    async start(controller) {
-      const reader = upstream.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') {
-              controller.enqueue(sseChunk('', true));
-              continue;
-            }
-            try {
-              const json = JSON.parse(payload) as {
-                choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
-              };
-              const choice = json.choices?.[0];
-              const text = choice?.delta?.content ?? '';
-              const isFinal = choice?.finish_reason != null && choice.finish_reason !== '';
-
-              if (text) controller.enqueue(sseChunk(text, false));
-              if (isFinal) controller.enqueue(sseChunk('', true));
-            } catch {
-              // skip malformed
-            }
-          }
-        }
-        controller.enqueue(sseChunk('', true));
-      } catch (err) {
-        controller.enqueue(
-          `data: ${JSON.stringify({ error: String(err), is_final: true })}\n\n`,
-        );
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return sseStream(readable);
-}
-
-// ── LM Studio provider (OpenAI-compatible, no API key) ────────────────────────
-
-async function streamLMStudio(opts: {
-  baseUrl: string;
-  model: string;
-  systemPrompt: string;
-  userMessage: string;
-  maxTokens?: number;
-  temperature?: number;
-}): Promise<Response> {
-  const {
-    baseUrl,
-    model,
-    systemPrompt,
-    userMessage,
-    maxTokens = 2048,
-    temperature = 0.8,
-  } = opts;
-
-  const cleanUrl = baseUrl.replace(/\/+$/, '');
-
-  let upstream: globalThis.Response;
-  try {
-    upstream = await fetch(`${cleanUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: maxTokens,
-        temperature: Math.min(temperature, 1.0),
-        stream: true,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-  } catch {
-    return sseError(`Cannot connect to LM Studio at ${cleanUrl}.`);
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    let detail = `HTTP ${upstream.status}`;
-    try {
-      const body = await upstream.clone().json();
-      detail = body?.error?.message ?? detail;
-    } catch {
-      // ignore
-    }
-    return sseError(`LM Studio error: ${detail}`);
-  }
-
-  const readable = new ReadableStream<string>({
-    async start(controller) {
-      const reader = upstream.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') {
-              controller.enqueue(sseChunk('', true));
-              continue;
-            }
-            try {
-              const json = JSON.parse(payload) as {
-                choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
-              };
-              const choice = json.choices?.[0];
-              const text = choice?.delta?.content ?? '';
-              const isFinal = choice?.finish_reason != null && choice.finish_reason !== '';
-
-              if (text) controller.enqueue(sseChunk(text, false));
-              if (isFinal) controller.enqueue(sseChunk('', true));
-            } catch {
-              // skip malformed
-            }
-          }
-        }
-        controller.enqueue(sseChunk('', true));
-      } catch (err) {
-        controller.enqueue(
-          `data: ${JSON.stringify({ error: String(err), is_final: true })}\n\n`,
-        );
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return sseStream(readable);
-}
-
-// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -579,7 +61,8 @@ export async function POST(req: NextRequest) {
     openrouter_base_url?: string;
   };
 
-  const systemPrompt = SYSTEM_PROMPTS[task] ?? SYSTEM_PROMPTS.default;
+  const systemPrompt =
+    STORY_GENERATION_SYSTEM_PROMPTS[task] ?? STORY_GENERATION_SYSTEM_PROMPTS.default;
 
   let context: Record<string, unknown> = contextFromBody ? { ...contextFromBody } : {};
 
@@ -600,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   switch (provider_id) {
     case 'ollama':
-      return streamOllama({
+      return streamStoryOllama({
         baseUrl: ollama_base_url,
         model: ollama_model,
         systemPrompt,
@@ -612,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     case 'openai': {
       const apiKey = process.env.OPENAI_API_KEY ?? '';
-      return streamOpenAICompat({
+      return streamStoryOpenAICompat({
         baseUrl: 'https://api.openai.com/v1',
         apiKey,
         model: openai_model,
@@ -626,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     case 'claude': {
       const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-      return streamOpenAICompat({
+      return streamStoryOpenAICompat({
         baseUrl: 'https://api.anthropic.com/v1',
         apiKey,
         model: claude_model,
@@ -644,7 +127,7 @@ export async function POST(req: NextRequest) {
         process.env.NEXT_PUBLIC_LMSTUDIO_BASE_URL ??
         'http://127.0.0.1:1234';
       const model = lmstudio_model || openai_model || 'gpt-4o-mini';
-      return streamLMStudio({
+      return streamStoryLMStudio({
         baseUrl,
         model,
         systemPrompt,
@@ -656,13 +139,12 @@ export async function POST(req: NextRequest) {
 
     case 'openrouter': {
       const saved = await getLLMSettings();
-      const baseUrl = (openrouterBaseUrlBody || saved.openrouterBaseUrl || 'https://openrouter.ai/api/v1').replace(
-        /\/+$/,
-        '',
-      );
+      const baseUrl = (
+        openrouterBaseUrlBody || saved.openrouterBaseUrl || 'https://openrouter.ai/api/v1'
+      ).replace(/\/+$/, '');
       const model = openrouterModelBody || saved.openrouterModel || 'openai/gpt-4o-mini';
       const apiKey = process.env.OPENROUTER_API_KEY ?? '';
-      return streamOpenAICompat({
+      return streamStoryOpenAICompat({
         baseUrl,
         apiKey,
         model,
@@ -676,7 +158,7 @@ export async function POST(req: NextRequest) {
     }
 
     default:
-      return sseError(
+      return storySseError(
         `Unknown provider: "${provider_id}". Choose: ollama, openai, claude, lmstudio, openrouter`,
       );
   }

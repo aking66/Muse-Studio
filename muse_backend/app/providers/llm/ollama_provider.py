@@ -21,48 +21,9 @@ import os
 from typing import Any, AsyncGenerator, Optional
 
 from app.providers.base import LLMProvider, LLMChunk
+from app.providers.llm.shared_prompts import system_prompts_ollama
 
-
-# ── System prompts (same as OpenAI provider for task consistency) ─────────────
-
-SYSTEM_PROMPTS: dict[str, str] = {
-    "generate_storyline": (
-        "You are Story Muse, a creative AI assistant specializing in film narrative development. "
-        "Generate a rich, structured storyline outline. Return the result in this exact JSON format:\n"
-        "{\n"
-        '  "logline": "One-sentence logline",\n'
-        '  "plotOutline": "2-3 paragraph plot outline",\n'
-        '  "characters": ["Character 1 — description", "Character 2 — description"],\n'
-        '  "themes": ["Theme 1", "Theme 2"],\n'
-        '  "genre": "Genre"\n'
-        "}\n"
-        "Be cinematic, evocative, and precise. Return ONLY valid JSON, no markdown code blocks."
-    ),
-    "write_scene_script": (
-        "You are Story Muse, a professional screenwriter AI. "
-        "Write a properly formatted scene script including: scene heading (INT./EXT. LOCATION — TIME), "
-        "action description, and dialogue with character names and parentheticals. "
-        "Follow standard screenplay format."
-    ),
-    "refine_dialogue": (
-        "You are Story Muse, an expert dialogue editor. "
-        "Improve the provided dialogue for naturalness, character voice, and dramatic impact. "
-        "Preserve the original intent while enhancing subtext and rhythm."
-    ),
-    "add_tension": (
-        "You are Story Muse, a dramatic tension specialist. "
-        "Enhance the provided scene to increase dramatic tension, stakes, or conflict. "
-        "Suggest specific additions or modifications."
-    ),
-    "general_query": (
-        "You are Story Muse, a creative AI assistant for filmmakers. "
-        "Help with any aspect of film narrative, script writing, or story development."
-    ),
-    "default": (
-        "You are Story Muse, a creative AI assistant for filmmakers. "
-        "Help with any aspect of film narrative, script writing, or story development."
-    ),
-}
+SYSTEM_PROMPTS: dict[str, str] = system_prompts_ollama()
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.2"

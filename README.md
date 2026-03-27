@@ -63,6 +63,13 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 
 ## 1. What's New
 
+### Release 1.5.0 (2026-03-28)
+
+- **Product version** is **1.5.0** across the frontend (`muse-studio`), backend API (`/health`), and plugin SDK/host packages.
+- **Story & scene generation** — shared helpers under `muse-studio/lib/generation/` (story + batch scenes routes are thinner; easier to maintain).
+- **LLM providers** — shared Story Muse system prompts in `muse_backend/app/providers/llm/shared_prompts.py` (less duplication across OpenAI, Claude, OpenRouter, LM Studio, Ollama).
+- **Jobs & Comfy/plugin flows** — `useJobPoll`, shared job utilities, and clearer ComfyUI vs plugin-provider paths for generation dialogs and playground.
+
 ### Exporting your film with the Video Editor Agent (2026-03-13)
 
 When all your scene videos are ready, Muse can help you turn them into a full film using the **Video Editor Agent**. You can let the agent assemble a master cut instead of downloading every clip and editing by hand.
@@ -586,7 +593,7 @@ Expected response (example):
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
+  "version": "1.5.0",
   "available_providers": { ... }
 }
 ```
