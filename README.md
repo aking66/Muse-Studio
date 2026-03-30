@@ -64,7 +64,7 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 
 ## 1. What's New
 
-### Release 1.5.2 (2026-03-31)
+### Release 1.5.2 (2026-03-31) [https://github.com/benjiyaya/Muse-Studio/releases/tag/v1.5.2](https://github.com/benjiyaya/Muse-Studio/releases/tag/v1.5.2)
 
 - **MCP + plugin extension refresh** across frontend settings/pages and backend bridge wiring.
 - **Generation and provider flow updates** in draft/refine routes, Kanban/Playground dialogs, and provider adapter contracts.
