@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Film, Sparkles, ChevronRight, Settings, LayoutGrid, BookOpen, FlaskConical } from 'lucide-react';
+import { Film, Sparkles, ChevronRight, Settings, LayoutGrid, BookOpen, FlaskConical, Puzzle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -76,6 +76,7 @@ export function AppHeader({
   }, [router]);
   const isProjectView = !!projectTitle;
   const isPlayground = pathname === '/playground';
+  const isMcpExtensions = pathname === '/mcp-extensions';
 
   async function handleDismiss(id: string) {
     await dismissSuggestion(id);
@@ -211,6 +212,31 @@ export function AppHeader({
             onRefresh={projectId ? handleRefreshSuggestions : undefined}
             scenes={overviewProject?.scenes ?? []}
           />
+
+          {/* Extensions console (global) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  'h-9 w-9 rounded-xl hover:bg-white/8',
+                  isMcpExtensions && 'bg-violet-500/15 text-violet-300',
+                )}
+                asChild
+              >
+                <Link href="/mcp-extensions" aria-label="Extensions">
+                  <Puzzle
+                    className={cn(
+                      'h-4 w-4',
+                      isMcpExtensions ? 'text-violet-300' : 'text-muted-foreground',
+                    )}
+                  />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Extensions</TooltipContent>
+          </Tooltip>
 
           {/* Playground (global) */}
           <Tooltip>

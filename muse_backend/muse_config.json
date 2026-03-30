@@ -10,18 +10,14 @@
   "outputs_path": "muse-studio/outputs",
   "providers": {
     "image_draft": "flux_klein",
-    "image_draft_alt": "qwen",
-    "image_refine": "zimage_turbo",
-    "llm": "openrouter",
-    "video_default": "ltx2"
+    "image_refine": "flux_klein",
+    "llm": "ollama",
+    "video_default": "wan2.2"
   },
   "model_formats": {
     "_comment": "Supported formats: bf16, fp16, fp8, fp4, gguf. See models/README.md for which formats each model supports.",
-    "qwen-image-edit": "bf16",
     "flux-klein": "bf16",
-    "zimage-turbo": "bf16",
-    "wan2.2": "gguf",
-    "ltx2": "bf16"
+    "wan2.2": "gguf"
   },
   "inference": {
     "_comment": "flux_klein_offload: 'none' (full GPU, fastest) | 'model' (saves ~15 GB VRAM) | 'sequential' (minimum VRAM, slowest)",

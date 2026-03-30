@@ -1,87 +1,58 @@
-# Z-Image Turbo Demo Plugin Template
+# Z-Image Turbo (MCP)
 
-Reference plugin extension template for Muse `image.generate`, inspired by:
+Local **Z-Image Turbo** inference using Hugging Face `diffusers` (`ZImagePipeline`) and a folder layout matching [Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo).
 
-- `muse_backend/app/providers/image/zimage_provider.py`
+This package is **MCP-only** (FastMCP). There is no HTTP plugin server.
 
-This template runs as an **external plugin service** and is intended as a starter project for third-party developers.
+## Setup
 
-## What this demo does
-
-- Exposes plugin endpoints:
-  - `GET /health`
-  - `POST /hooks/image.generate`
-- Accepts Muse canonical `image.generate` payload
-- Produces a demo PNG output and returns `finalImage.url`
-
-It does **not** run real model inference yet. Replace adapter logic in:
-
-- `app/zimage_adapter.py` -> `generate_demo_image()`
-
-## Folder structure
-
-```text
-plugin-template-zimage-turbo/
-  plugin.manifest.json
-  requirements.txt
-  app/
-    main.py
-    schemas.py
-    zimage_adapter.py
-```
-
-## Quick start
-
-1. Install dependencies:
+1. Python 3.10+ with CUDA PyTorch recommended.
+2. Copy `config.example.json` to `config.json` and set `model_root`, **or** set `ZIMAGE_MODEL_DIR` (see below).
+3. Optional: copy `.env.example` to **`.env`** in this folder for `ZIMAGE_MCP_TRANSPORT`, ports, or `ZIMAGE_MODEL_DIR`. Env vars from `.env` override `config.json` for the model path when `ZIMAGE_MODEL_DIR` is set.
+4. Install:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the plugin service:
+The package loads **`plugin-template-zimage-turbo/.env`** automatically (via `python-dotenv`) before reading `config.json` / the environment.
+
+## Run (MCP)
+
+**stdio (default)** — typical for Cursor / Claude Desktop:
 
 ```bash
-uvicorn app.main:app --host 127.0.0.1 --port 18181 --reload
+python -m app.mcp_server
 ```
 
-3. In Muse Studio (`Settings -> Plugins`), add this plugin repo URL and enable it.
+**Streamable HTTP** (e.g. Muse Studio **MCP Extension** / `POST /mcp`):
 
-4. Use Playground/Kanban provider selector:
-   - Provider = `Plugin`
-   - Capability = `image.generate`
+Set variables in **`.env`** or the shell, then:
 
-## Environment variables
-
-- `PORT` (default `18181`)
-- `HOST` (default `127.0.0.1`)
-- `PLUGIN_OUTPUTS_DIR` (default `./outputs`)
-- `PLUGIN_PUBLIC_BASE_URL` (default built from `HOST:PORT`)
-
-## `plugin.manifest.json` notes
-
-- `service.baseUrl` defaults to `http://127.0.0.1:18181`
-- capability hook:
-  - `image.generate` -> `/hooks/image.generate`
-
-## Integrating real Z-Image Turbo
-
-When replacing the demo implementation:
-
-1. Parse `MuseImageGenerateInput`
-2. Run your real img2img/refinement pipeline
-3. Save output under `PLUGIN_OUTPUTS_DIR`
-4. Return:
-
-```json
-{
-  "finalImage": {
-    "url": "http://127.0.0.1:18181/assets/<your-output-path>.png",
-    "width": 1280,
-    "height": 720
-  },
-  "metadata": {
-    "provider": "zimage_turbo_demo"
-  }
-}
+```bash
+set ZIMAGE_MCP_TRANSPORT=streamable-http
+set ZIMAGE_MCP_HOST=127.0.0.1
+set ZIMAGE_MCP_PORT=18182
+python -m app.mcp_server
 ```
 
+Clients must send `Accept: application/json, text/event-stream` on MCP HTTP requests.
+
+### Tools
+
+| Tool | Purpose |
+|------|--------|
+| `zimage_health` | Model path, outputs dir, CUDA availability (does not load weights). |
+| `zimage_generate` | Text-to-image; writes PNG under `PLUGIN_OUTPUTS_DIR` (default `./outputs`). |
+
+### Environment
+
+| Variable | Meaning |
+|----------|--------|
+| `ZIMAGE_MODEL_DIR` | Override model folder (else `config.json` `model_root`). |
+| `PLUGIN_OUTPUTS_DIR` | Where PNGs are written (default `./outputs`). |
+| `PLUGIN_PUBLIC_BASE_URL` | Optional. If set, `finalImage.url` is `…/assets/<rel_path>` under this base. If unset, `finalImage.url` uses a **`file://`** URI to the saved file. |
+| `ZIMAGE_MCP_TRANSPORT` | `stdio` (default), `streamable-http`, or `sse`. |
+| `ZIMAGE_MCP_HOST` / `ZIMAGE_MCP_PORT` | Listen address for HTTP transports (default `127.0.0.1:18182`). |
+
+Use the returned **`image_path`** (absolute path) from `zimage_generate` when integrating with tools that read local files.

@@ -30,10 +30,15 @@ function fullPath(rel: string): string {
   return resolveUnderOutputs(rel.trim());
 }
 
-/** Accept outputs produced under drafts/playground (global or project subfolder). */
+/** Accept outputs from Media playground or Extensions MCP console (under outputs/). */
 function isAllowedPlaygroundSource(sourceRelPath: string): boolean {
   const n = toPosixPath(sourceRelPath.trim());
-  if (!n.startsWith('drafts/playground/')) return false;
+  if (
+    !n.startsWith('drafts/playground/') &&
+    !n.startsWith('drafts/mcp-extensions/')
+  ) {
+    return false;
+  }
   try {
     resolveUnderOutputs(n);
   } catch {

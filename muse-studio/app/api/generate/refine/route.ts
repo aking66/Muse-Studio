@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { backendClient, BackendError, type ImageRefineRequest } from '@/lib/backend-client';
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = (await req.json()) as ImageRefineRequest;
-    const data = await backendClient.refineImage(body);
-    return NextResponse.json(data);
-  } catch (err) {
-    if (err instanceof BackendError) {
-      return NextResponse.json({ error: err.message }, { status: err.status });
-    }
-    return NextResponse.json({ error: 'Backend unreachable' }, { status: 503 });
-  }
+export async function POST() {
+  return NextResponse.json(
+    {
+      error:
+        'Legacy /api/generate/refine endpoint is deprecated. Use MCP Extensions (/mcp-extensions) or /api/generate/comfyui.',
+      migration: '/mcp-extensions',
+    },
+    {
+      status: 410,
+      headers: {
+        'x-muse-deprecated': 'true',
+      },
+    },
+  );
 }

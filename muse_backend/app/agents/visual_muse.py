@@ -1,8 +1,8 @@
 """
-Visual Muse Agent — keyframe / image generation.
+Visual Muse Agent — keyframe / image generation (legacy stub).
 
 Invoked by the Supervisor when next_task is "keyframe".
-Uses app.providers (image_draft, image_refine) when implemented.
+Image generation now runs via MCP Extensions / ComfyUI.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ def run_visual_muse(
 ) -> dict[str, Any]:
     """
     Visual Muse: generate or refine keyframe images for a scene.
-    Stub: returns placeholder. Later will wrap get_image_draft_provider / get_image_refine_provider.
+    Stub: returns placeholder. Migrate callers to MCP Extensions.
     """
     return {
         "muse": "visual",
         "status": "stub",
-        "message": "Visual Muse agent stub. Use ComfyUI or POST /generate/draft for keyframes.",
+        "message": "Visual Muse agent stub. Use MCP Extensions or /generate/comfyui for keyframes.",
         "task": task,
         "scene_id": scene_id,
     }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Film, Sparkles, FlaskConical } from 'lucide-react';
+import { Plus, Film, Sparkles, FlaskConical, Puzzle } from 'lucide-react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { ProjectCard } from '@/components/projects/ProjectCard';
 import { NewProjectDialog } from '@/components/projects/NewProjectDialog';
@@ -44,6 +44,12 @@ export function ProjectsClientPage({ initialProjects }: ProjectsClientPageProps)
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button variant="outline" size="default" className="gap-2 border-white/15" asChild>
+              <Link href="/mcp-extensions">
+                <Puzzle className="h-4 w-4" />
+                Extensions
+              </Link>
+            </Button>
             <Button variant="outline" size="default" className="gap-2 border-white/15" asChild>
               <Link href="/playground">
                 <FlaskConical className="h-4 w-4" />

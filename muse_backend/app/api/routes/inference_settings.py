@@ -26,7 +26,7 @@ FluxOffloadMode = Literal["none", "model", "sequential"]
 class InferenceSettingsResponse(BaseModel):
     flux_klein_offload: FluxOffloadMode
     pipeline_loaded: bool
-    video_default: str          # e.g. "ltx2", "wan2.2", "runway"
+    video_default: str          # e.g. "wan2.2", "kling", "runway"
 
 
 class InferenceSettingsUpdate(BaseModel):
@@ -59,7 +59,7 @@ async def get_inference_settings():
 
     cfg = _read_config()
     offload = cfg.get("inference", {}).get("flux_klein_offload", "none")
-    video_default = cfg.get("providers", {}).get("video_default", "ltx2")
+    video_default = cfg.get("providers", {}).get("video_default", "wan2.2")
     return InferenceSettingsResponse(
         flux_klein_offload=offload,
         pipeline_loaded=FluxKleinProvider._pipeline is not None,
@@ -99,7 +99,7 @@ async def update_inference_settings(body: InferenceSettingsUpdate):
         logger.info("[InferenceSettings] Unloading pipeline so next call uses new offload mode.")
         FluxKleinProvider.unload_pipeline()
 
-    video_default = cfg.get("providers", {}).get("video_default", "ltx2")
+    video_default = cfg.get("providers", {}).get("video_default", "wan2.2")
     return InferenceSettingsResponse(
         flux_klein_offload=body.flux_klein_offload,
         pipeline_loaded=FluxKleinProvider._pipeline is not None,

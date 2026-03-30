@@ -20,11 +20,8 @@ from app.providers.base import (
     VideoProvider,
     LLMProvider,
 )
-from app.providers.image.qwen_provider import QwenImageEditProvider
-from app.providers.image.zimage_provider import ZImageTurboProvider
 from app.providers.image.flux_klein_provider import FluxKleinProvider
 from app.providers.video.local.wan_provider import WanProvider
-from app.providers.video.local.ltx_provider import LTXProvider
 from app.providers.video.api.kling_provider import KlingProvider
 from app.providers.video.api.seeddance_provider import SeedDanceProvider
 from app.providers.video.api.runway_provider import RunwayProvider
@@ -39,23 +36,18 @@ from app.providers.llm.openrouter_provider import OpenRouterProvider
 # ── Provider registries ───────────────────────────────────────────────────────
 
 IMAGE_DRAFT_PROVIDERS: dict[str, Type[ImageDraftProvider]] = {
-    "qwen": QwenImageEditProvider,          # img2img editing, Qwen 2.5 VL backbone
     "flux_klein": FluxKleinProvider,        # text2image / reference2image, FLUX.2-klein 9B
     # Add new image draft providers here, e.g.:
     # "sdxl": SDXLProvider,
 }
 
-IMAGE_REFINE_PROVIDERS: dict[str, Type[ImageRefineProvider]] = {
-    "zimage_turbo": ZImageTurboProvider,
-    # Add new refinement providers here
-}
+IMAGE_REFINE_PROVIDERS: dict[str, Type[ImageRefineProvider]] = {}
 
 VIDEO_PROVIDERS: dict[str, Type[VideoProvider]] = {
     # Omni — routes to configured default (Phase 3)
     "omni": OmniVideoProvider,
     # Local models
     "wan2.2": WanProvider,
-    "ltx2": LTXProvider,
     # Cloud APIs
     "kling": KlingProvider,
     "seeddance": SeedDanceProvider,

@@ -51,9 +51,9 @@ class ServerConfig:
 
 @dataclass
 class ProviderConfig:
-    image_draft: str = field(default_factory=lambda: _get("providers.image_draft", "qwen"))
-    image_refine: str = field(default_factory=lambda: _get("providers.image_refine", "zimage_turbo"))
-    video_default: str = field(default_factory=lambda: _get("providers.video_default", "ltx2"))
+    image_draft: str = field(default_factory=lambda: _get("providers.image_draft", "flux_klein"))
+    image_refine: str = field(default_factory=lambda: _get("providers.image_refine", "flux_klein"))
+    video_default: str = field(default_factory=lambda: _get("providers.video_default", "wan2.2"))
 
 
 # Hot-reload: llm is read from _raw on every access so POST /llm/config can take effect without restart.

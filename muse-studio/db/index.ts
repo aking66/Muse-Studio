@@ -198,6 +198,18 @@ function applySchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_muse_chat_project_muse_created
       ON muse_chat_messages (project_id, muse_agent, created_at);
 
+    -- Extensions MCP console (/mcp-extensions): one row per user or assistant message
+    CREATE TABLE IF NOT EXISTS mcp_extensions_chat_messages (
+      sort_key    INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          TEXT NOT NULL UNIQUE,
+      role        TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      tool_calls_json TEXT,
+      created_at  TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mcp_ext_chat_sort ON mcp_extensions_chat_messages (sort_key);
+
     -- Character sheets: per-project characters and their reference images
     CREATE TABLE IF NOT EXISTS characters (
       id              TEXT PRIMARY KEY,
@@ -241,6 +253,13 @@ function applySchema(database: Database.Database): void {
   try {
     database.exec(`ALTER TABLE scenes ADD COLUMN comfy_video_workflow_id TEXT`);
   } catch { /* column already exists */ }
+  try {
+    database.exec(
+      `ALTER TABLE plugin_hooks ADD COLUMN mcp_policy TEXT NOT NULL DEFAULT 'auto'`,
+    );
+  } catch {
+    /* column already exists */
+  }
 }
 
 function seedIfEmpty(database: Database.Database): void {

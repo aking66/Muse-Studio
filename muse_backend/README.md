@@ -178,10 +178,8 @@ Configure the preferred format per model in `muse_config.json`:
 ```json
 {
   "model_formats": {
-    "qwen-image-edit": "bf16",
-    "zimage-turbo": "bf16",
-    "wan2.2": "fp16",
-    "ltx2": "gguf"
+    "flux-klein": "bf16",
+    "wan2.2": "gguf"
   }
 }
 ```

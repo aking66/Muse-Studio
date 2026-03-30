@@ -1,10 +1,15 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import * as z from 'zod/v4';
 import Database from 'better-sqlite3';
+
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+// Load `mcp-muse-studio/.env` so `npm run start` picks up MCP_* without manual export.
+dotenv.config({ path: path.join(serverDir, '.env') });
 
 const env = process.env;
 
@@ -15,7 +20,6 @@ const BIND_HOST = env.MCP_BIND_HOST?.trim() || '127.0.0.1';
 const MUSE_STUDIO_BASE_URL = env.MUSE_STUDIO_BASE_URL?.trim() || 'http://127.0.0.1:3000';
 
 // Canonical muse.db lives in muse-studio/db/muse.db.
-const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DB_PATH = path.resolve(serverDir, '..', 'muse-studio', 'db', 'muse.db');
 const MUSE_STUDIO_DB_PATH = env.MUSE_STUDIO_DB_PATH?.trim() || DEFAULT_DB_PATH;
 
@@ -309,6 +313,17 @@ async function fetchMuseJson(pathname, body) {
   return await res.json().catch(() => ({}));
 }
 
+/** Scene payload for `ingestScene` (object form or JSON string via `sceneJson`). */
+const ingestSceneObjectSchema = z.object({
+  sceneId: z.string().describe('scene id'),
+  sceneNumber: z.number().int(),
+  title: z.string(),
+  heading: z.string(),
+  description: z.string(),
+  dialogue: z.string().optional().nullable(),
+  technicalNotes: z.string().optional().nullable(),
+});
+
 async function fetchMuseSseText(pathname, body) {
   const res = await fetch(`${MUSE_STUDIO_BASE_URL}${pathname}`, {
     method: 'POST',
@@ -344,7 +359,7 @@ const getServer = () => {
     'muse_health',
     {
       description: 'Get Muse Studio health and provider availability.',
-      inputSchema: z.object({}).passthrough(),
+      inputSchema: {},
     },
     async () => {
       const res = await fetch(`${MUSE_STUDIO_BASE_URL}/api/health`);
@@ -362,7 +377,7 @@ const getServer = () => {
     {
       title: 'List Muse projects',
       description: 'List projects (metadata only) from Muse Studio SQLite.',
-      inputSchema: z.object({}).passthrough(),
+      inputSchema: {},
     },
     async () => {
       const db = openDb();
@@ -392,9 +407,9 @@ const getServer = () => {
     {
       title: 'Get Muse project',
       description: 'Read a full project with scenes, keyframes and reference images from Muse Studio SQLite.',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
-      }),
+      },
     },
     async ({ projectId }) => {
       const db = openDb();
@@ -437,13 +452,13 @@ const getServer = () => {
     {
       title: 'Generate storyline / script text',
       description: 'Generate Story Muse output (streamed in Muse Studio, buffered here).',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().optional().describe('Optional Muse project id for RAG context'),
-        task: z.string().optional().default('default').describe('Muse story task'),
+        task: z.string().optional().describe('Muse story task'),
         prompt: z.string().describe('Prompt to send to Muse Story Muse'),
         providerId: z.string().optional().describe('Muse provider_id (ollama/openai/claude/...)'),
         // Pass-through extras are allowed but will be forwarded as additional request fields.
-      }).passthrough(),
+      },
     },
     async (args) => {
       const { projectId, task, prompt, providerId, ...rest } = args;
@@ -464,10 +479,10 @@ const getServer = () => {
     {
       title: 'Generate scenes',
       description: 'Generate long-form scenes (SSE in Muse Studio, buffered here).',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
         targetScenes: z.number().int().min(1).max(120).describe('Approx scene count (Muse caps internally)'),
-      }),
+      },
     },
     async ({ projectId, targetScenes }) => {
       assertWriteAllowed({ projectId });
@@ -488,32 +503,49 @@ const getServer = () => {
     'ingestScene',
     {
       title: 'Ingest a scene',
-      description: 'Ingest a single scene into Muse Studio (writes to SQLite).',
-      inputSchema: z.object({
+      description:
+        'Ingest a single scene into Muse Studio (writes to SQLite). Pass either `scene` (object) or `sceneJson` (one JSON string). For long descriptions, prefer `sceneJson` so the client does not truncate nested fields or break XML-style tool parsers.',
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
-        scene: z.object({
-          sceneId: z.string().describe('scene id'),
-          sceneNumber: z.number().int(),
-          title: z.string(),
-          heading: z.string(),
-          description: z.string(),
-          dialogue: z.string().optional().nullable(),
-          technicalNotes: z.string().optional().nullable(),
-        }),
-      }),
+        scene: ingestSceneObjectSchema
+          .optional()
+          .describe('Scene fields as a structured object.'),
+        sceneJson: z
+          .string()
+          .optional()
+          .describe(
+            'Alternative: full scene as a single JSON string (same keys as `scene`). Use when descriptions are long or tool-call output gets cut off.',
+          ),
+      },
     },
-    async ({ projectId, scene }) => {
+    async ({ projectId, scene, sceneJson }) => {
       assertWriteAllowed({ projectId });
+      const hasScene = scene != null && typeof scene === 'object';
+      const hasJson = sceneJson != null && String(sceneJson).trim() !== '';
+      if (hasScene === hasJson) {
+        throw new Error('Provide exactly one of `scene` (object) or `sceneJson` (string).');
+      }
+      let resolved;
+      if (hasJson) {
+        try {
+          resolved = ingestSceneObjectSchema.parse(JSON.parse(String(sceneJson)));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(`sceneJson must be valid JSON for the scene shape: ${msg}`);
+        }
+      } else {
+        resolved = ingestSceneObjectSchema.parse(scene);
+      }
       await fetchMuseJson('/api/scenes', {
         projectId,
         scene: {
-          sceneId: scene.sceneId,
-          sceneNumber: scene.sceneNumber,
-          title: scene.title,
-          heading: scene.heading,
-          description: scene.description,
-          dialogue: scene.dialogue ?? null,
-          technicalNotes: scene.technicalNotes ?? null,
+          sceneId: resolved.sceneId,
+          sceneNumber: resolved.sceneNumber,
+          title: resolved.title,
+          heading: resolved.heading,
+          description: resolved.description,
+          dialogue: resolved.dialogue ?? null,
+          technicalNotes: resolved.technicalNotes ?? null,
         },
       });
       const project = await callToolGetProject(projectId);
@@ -526,11 +558,11 @@ const getServer = () => {
     {
       title: 'Run orchestrator',
       description: 'Run Muse Supervisor orchestrate step for a project.',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
-        goal: z.string().optional().default('next_step').describe('Supervisor goal'),
+        goal: z.string().optional().describe('Supervisor goal'),
         targetTotal: z.number().int().optional().describe('Optional target scene count'),
-      }),
+      },
     },
     async ({ projectId, goal, targetTotal }) => {
       assertWriteAllowed({ projectId });
@@ -548,10 +580,10 @@ const getServer = () => {
     {
       title: 'Run video editor',
       description: 'Run Muse Video Editor Agent (stitch/smart edit) for a project.',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
         mode: z.string().optional().describe('SIMPLE_STITCH or SMART_EDIT (or SMART_EDIT_REMOTION)'),
-      }),
+      },
     },
     async ({ projectId, mode }) => {
       assertWriteAllowed({ projectId });
@@ -568,11 +600,12 @@ const getServer = () => {
     {
       title: 'Apply film timeline',
       description: 'Apply a user-edited film timeline to re-render master output.',
-      inputSchema: z.object({
+      inputSchema: {
         projectId: z.string().describe('Muse project id'),
-        filmTimeline: z.record(z.any()).describe('Film timeline JSON'),
+        // z.record(z.any()) can trip some MCP client schema loaders; use passthrough object for compatibility.
+        filmTimeline: z.object({}).passthrough().describe('Film timeline JSON'),
         outputKind: z.enum(['remotion', 'ffmpeg']).optional().describe('Renderer mode'),
-      }),
+      },
     },
     async ({ projectId, filmTimeline, outputKind }) => {
       assertWriteAllowed({ projectId });
@@ -657,7 +690,7 @@ app.delete('/mcp', async (req, res) => {
   res.status(405).send(JSON.stringify({ error: 'Method not allowed' }));
 });
 
-app.listen(PORT, BIND_HOST, () => {
+const httpServer = app.listen(PORT, BIND_HOST, () => {
   console.log(`Muse MCP server listening at http://${BIND_HOST}:${PORT}/mcp`);
   console.log(`Muse Studio base URL: ${MUSE_STUDIO_BASE_URL}`);
   console.log(`MUSE_STUDIO_DB_PATH: ${MUSE_STUDIO_DB_PATH}`);
@@ -665,7 +698,25 @@ app.listen(PORT, BIND_HOST, () => {
   console.log(`MCP_ALLOW_WRITE=${MCP_ALLOW_WRITE}`);
 });
 
+httpServer.on('error', (err) => {
+  console.error('MCP HTTP server error:', err);
+});
+
+httpServer.on('close', () => {
+  console.log('MCP HTTP server closed.');
+});
+
 process.on('SIGINT', () => {
-  process.exit(0);
+  console.log('Received SIGINT, shutting down MCP HTTP server...');
+  httpServer.close(() => {
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down MCP HTTP server...');
+  httpServer.close(() => {
+    process.exit(0);
+  });
 });
 

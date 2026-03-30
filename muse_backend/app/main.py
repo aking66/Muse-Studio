@@ -16,7 +16,7 @@ from app.api.routes import agent, generate, providers, jobs, llm, inference_sett
 from app.schemas import HealthResponse
 from app.registry import get_all_provider_info
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.2"
 
 # ── App instance ──────────────────────────────────────────────────────────────
 

@@ -1,5 +1,14 @@
-fastapi
-uvicorn
-pillow
-pydantic
+pillow>=10.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
 
+# MCP server (`python -m app.mcp_server`)
+mcp>=1.20.0
+
+# Z-Image Turbo (Hugging Face diffusers layout — Tongyi-MAI/Z-Image-Turbo)
+# Install PyTorch for your platform: https://pytorch.org/get-started/locally/
+torch>=2.1.0
+diffusers>=0.32.0
+transformers>=4.40.0
+accelerate>=0.27.0
+safetensors>=0.4.0

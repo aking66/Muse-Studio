@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'crypto';
 import { callEnabledPluginsForCapability } from '@/lib/actions/plugins';
 import { resolveUnderOutputs, toPosixPath } from '@/lib/server/paths';
@@ -53,12 +54,31 @@ export async function normalizePluginOutputToOutputs(params: {
     return relOut;
   }
 
-  if (/^(https?:)?\/\//i.test(params.value)) {
+  // MCP local servers often return file:// or absolute paths (not under muse-studio/outputs).
+  if (params.value.startsWith('file:')) {
+    try {
+      const fsPath = fileURLToPath(params.value);
+      if (fs.existsSync(fsPath)) {
+        fs.mkdirSync(path.dirname(absOut), { recursive: true });
+        fs.copyFileSync(fsPath, absOut);
+        return relOut;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  if (path.isAbsolute(params.value) && fs.existsSync(params.value)) {
+    fs.mkdirSync(path.dirname(absOut), { recursive: true });
+    fs.copyFileSync(params.value, absOut);
+    return relOut;
+  }
+
+  if (/^https?:\/\//i.test(params.value)) {
     await writeFromUrl(params.value, absOut);
     return relOut;
   }
 
-  // Treat as output-relative path.
+  // Treat as output-relative path under this app's outputs/.
   copyFromOutputRel(params.value, absOut);
   return relOut;
 }
@@ -81,9 +101,38 @@ export async function runPluginImageGeneration(params: {
   });
   if (!call.ok) throw new Error(call.error ?? 'Plugin image generation failed');
 
-  const data = call.data as MuseImageGenerateOutput;
+  const raw = call.data as Record<string, unknown>;
+  const imagePath =
+    typeof raw.image_path === 'string' && raw.image_path.trim()
+      ? raw.image_path.trim()
+      : typeof raw.imagePath === 'string' && raw.imagePath.trim()
+        ? raw.imagePath.trim()
+        : null;
+
+  if (imagePath && fs.existsSync(imagePath)) {
+    const ext = path.extname(imagePath) || '.png';
+    const filename = `${randomUUID()}${ext}`;
+    const relOut = toPosixPath(path.join(params.targetRelDir, filename));
+    const absOut = resolveUnderOutputs(relOut);
+    fs.mkdirSync(path.dirname(absOut), { recursive: true });
+    fs.copyFileSync(imagePath, absOut);
+    const base = raw as unknown as MuseImageGenerateOutput;
+    return {
+      outputRelPath: relOut,
+      pluginId: call.pluginId,
+      response: {
+        ...base,
+        finalImage: {
+          ...(base.finalImage ?? { url: '', alt: 'Image output' }),
+          url: `/api/outputs/${relOut}`,
+        },
+      },
+    };
+  }
+
+  const data = raw as unknown as MuseImageGenerateOutput;
   const finalUrl = data?.finalImage?.url;
-  if (!finalUrl) throw new Error('Plugin image response missing finalImage.url');
+  if (!finalUrl) throw new Error('Plugin image response missing finalImage.url and image_path');
 
   const outputRelPath = await normalizePluginOutputToOutputs({
     value: finalUrl,

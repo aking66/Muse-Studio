@@ -1,65 +1,97 @@
-# Muse Plugin Extension System (MVP -> Hardening)
+# Muse Extensions (MCP) - User Guide
 
-## What this MVP delivers
-1. **Plugin manifest contract** (`plugin.manifest.json`)
-   - Typed schema lives in `packages/plugin-sdk`.
-   - Host compatibility checks: `museApiVersion` major must match.
-2. **Control-plane storage (SQLite)**
-   - New tables added in `muse-studio/db/index.ts`:
-     - `plugins`
-     - `plugin_endpoints`
-     - `plugin_hooks`
-     - `plugin_ui_extensions`
-     - `plugin_settings` (placeholder for future secrets)
-3. **Plugin Manager UI**
-   - New page: `muse-studio/app/settings/plugins/page.tsx`
-   - Supported actions (MVP):
-     - Add plugin by GitHub URL (expects `plugin.manifest.json` at repo root for the provided ref)
-     - Enable / Disable
-     - Delete
-     - Manual health check refresh
-     - View manifest + declared hooks/UI extensions
-4. **Runtime capability call endpoint**
-   - API: `muse-studio/app/api/plugins/call/route.ts`
-   - Host contract implemented in:
-     - `muse-studio/lib/actions/plugins.ts` (`callEnabledPluginsForCapability`)
-   - MVP behavior: deterministically calls the first enabled plugin that declares the capability.
+This guide explains how users connect and use MCP Extensions in Muse Studio.
 
-## Test plan (manual, recommended)
-### Install happy path
-1. Start Muse Studio UI.
-2. Go to **Settings -> Plugins**.
-3. Paste a GitHub repo URL containing `plugin.manifest.json` with:
-   - `id`, `name`, `version`
-   - `museApiVersion` with major `1`
-   - `service.baseUrl` and `service.healthPath` (or accept default `/health`)
-   - at least one hook in `hooks[]` with `capability` set (e.g. `image.generate`)
-4. Click **Add Plugin**.
-5. Confirm it appears in the list with a health status.
+## What changed
 
-### Enable/disable behavior
-1. Toggle Enable off.
-2. Verify the plugin is no longer the selected provider for that capability (capability call returns “no enabled plugin”).
-3. Toggle Enable on and verify capability calls route to it again.
+Muse now uses an MCP-first extension model.
 
-### Capability call sanity
-1. POST to `/api/plugins/call` with:
-   - `capability`: the manifest hook capability
-   - `input`: an arbitrary JSON object
-2. Ensure the plugin endpoint receives the request and returns JSON.
+- Use `Settings -> Extensions` to register MCP servers.
+- Use `/mcp-extensions` to chat and run extension tools.
+- Per-tool policies let you choose:
+  - `auto`: run immediately
+  - `ask`: require confirmation before execution
 
-## Hardening work (Phase 3+)
-1. **Signature verification**
-   - Require signed manifests (publisher key or GitHub release signature).
-   - Verify `integrityHash` for UI extension bundles.
-2. **Auth + project scoping**
-   - Introduce project-scoped signed tokens for plugin calls.
-   - Support stronger auth schemes (API key/bearer, OAuth, etc.).
-3. **Resilience**
-   - Retry policy, circuit breaker, and clearer error taxonomy.
-4. **UI extensions routing**
-   - Slot registry and host-side feature flags.
-   - Improved isolation: stricter sandbox flags + optional bundle integrity enforcement.
-5. **Marketplace / discovery**
-   - Plugin metadata index and curated listings (not just raw GitHub URLs).
+Legacy plugin docs based on GitHub manifest install are not the primary user flow.
+
+## Where to use Extensions
+
+- **Setup page:** `Settings -> Extensions`
+- **Runtime page:** `Extensions` (`/mcp-extensions`)
+
+## Quick start (for users)
+
+1. Start your MCP server (for example, Z-Image Turbo).
+2. Open `Settings -> Extensions`.
+3. Add the MCP endpoint URL (typically `http://127.0.0.1:<port>/mcp`).
+4. Enable the extension.
+5. Open `/mcp-extensions`.
+6. In the right panel:
+   - enable/disable tools
+   - set `auto` or `ask` policy per tool
+7. Chat to generate/run tools, or use `Run MCP tool...` for direct JSON input.
+
+## Tool controls in `/mcp-extensions`
+
+Right panel provides:
+
+- Extension enable/disable switch
+- Tool-level toggle (on/off)
+- Tool policy:
+  - `auto` runs without prompt
+  - `ask` shows a pending approval banner in chat first
+
+## Chat behavior
+
+- LLM sees only enabled tools.
+- If policy is `ask`, the assistant returns a pending tool card and waits for your confirmation.
+- Tool outputs are shown inline:
+  - images
+  - videos
+  - JSON/text results
+
+## Media output actions
+
+For generated media in Extensions chat:
+
+- Image:
+  - `Assign to keyframe...`
+  - `Assign to character...`
+- Video:
+  - `Assign video to scene...`
+
+Media preview supports full-size expansion (lightbox) for both images and videos.
+
+## Data and persistence
+
+Muse stores extension control state and chat history in SQLite, including:
+
+- extension endpoints, hooks, and enabled flags
+- per-hook MCP policy (`auto` or `ask`)
+- `/mcp-extensions` chat history
+
+## Common issues
+
+- **Extension not showing tools**
+  - Ensure extension is enabled in settings.
+  - Ensure tool is enabled in the right panel.
+  - Verify MCP endpoint is reachable.
+
+- **Tool always asks before running**
+  - Policy is set to `ask`; change to `auto`.
+
+- **Generated media not assignable**
+  - Verify the tool returned a valid image/video output path or preview URL.
+
+- **HTTP MCP failures**
+  - Confirm server is running and endpoint is `/mcp`.
+  - Confirm host/port are correct.
+
+## For extension developers
+
+Use the repository-level document:
+
+- `PlugIns Development Documentation.md`
+
+That file covers MCP architecture, tool behavior, and template startup details.
 

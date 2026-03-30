@@ -19,9 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@muse/plugin-sdk": ["../packages/plugin-sdk/src/index.ts"],
-      "@muse/plugin-host": ["../packages/plugin-host/src/index.ts"]
+      "@/*": ["./*"]
     }
   },
   "include": [

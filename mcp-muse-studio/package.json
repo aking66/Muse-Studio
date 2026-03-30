@@ -1,6 +1,6 @@
 {
   "name": "mcp-muse-studio",
-  "version": "1.5.0",
+  "version": "1.5.2",
   "private": true,
   "type": "module",
   "description": "MCP adapter exposing Muse Studio capabilities (projects, story, scenes, editor, timeline).",
@@ -10,6 +10,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.26.0",
     "better-sqlite3": "12.6.2",
+    "dotenv": "^16.4.7",
     "zod": "^4.0.0"
   }
 }

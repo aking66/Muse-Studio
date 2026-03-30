@@ -1,11 +1,22 @@
 'use server';
 
+import { createHash } from 'node:crypto';
+
 import { revalidatePath } from 'next/cache';
 import { db } from '@/db';
 import type { PluginHook, PluginManifest, PluginService, UIExtension } from '@/lib/plugin-extension/manifest';
 import { isMuseApiCompatible, isWithinMuseVersionRange, parsePluginManifest } from '@/lib/plugin-extension/manifest';
 
 import { HOST_MUSE_API_VERSION, HOST_MUSE_VERSION, type PluginSummary } from '@/lib/plugin-extension/plugin-types';
+import { normalizePluginBaseUrl, parseMcpServersConfig } from '@/lib/mcp-extensions/mcpConfig';
+import {
+  inferMuseCapabilityForMcpTool,
+  isAuxiliaryMcpTool,
+  mcpCallToolJson,
+  mcpListToolNames,
+  resolveMcpEndpointUrl,
+  withMcpClient,
+} from '@/lib/mcp-extensions/mcpStreamableClient';
 
 export interface PluginCapabilityProvider {
   id: string;
@@ -47,6 +58,7 @@ interface PluginHookRow {
   path: string;
   permissions_json: string | null;
   enabled: number;
+  mcp_policy?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +78,13 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function revalidatePluginPaths(): void {
+  revalidatePath('/settings/plugins');
+  revalidatePath('/settings/extensions');
+  revalidatePath('/settings/mcp-extensions');
+  revalidatePath('/mcp-extensions');
+}
+
 function pluginEnvBearerTokenKey(pluginId: string): string {
   const safe = pluginId.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
   return `MUSE_PLUGIN_BEARER_TOKEN_${safe}`;
@@ -79,34 +98,73 @@ function resolveAuthRef(pluginId: string, authType: string, authRef: string | nu
   return null;
 }
 
-function parseGitHubRepoUrl(githubUrl: string): {
-  owner: string;
-  repo: string;
-  refCandidates: string[];
-} {
-  const url = githubUrl.trim().replace(/#.*$/, '');
-  // Normalize: strip trailing slashes
-  const normalized = url.replace(/\/+$/, '');
+function normalizeBaseUrl(input: string): string {
+  return normalizePluginBaseUrl(input);
+}
 
-  // Common patterns:
-  // - https://github.com/{owner}/{repo}
-  // - https://github.com/{owner}/{repo}/tree/{ref}
-  // - https://github.com/{owner}/{repo}/blob/{ref}
-  const m = normalized.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\/(tree|blob)\/([^/]+))?$/i);
-  if (!m) throw new Error('Unsupported GitHub URL. Please paste a GitHub repo URL.');
+export interface McpExtensionToolDescriptor {
+  pluginId: string;
+  pluginName: string;
+  capability: string;
+  method: string;
+  path: string;
+}
 
-  const owner = m[1];
-  const repo = m[2].replace(/\.git$/i, '');
-  const ref = m[4];
+export async function installMcpExtensionsFromJson(raw: string): Promise<{
+  installed: string[];
+  failed: Array<{ serverName: string; error: string }>;
+  warnings: string[];
+}> {
+  const { entries, warnings } = parseMcpServersConfig(raw);
+  const installed: string[] = [];
+  const failed: Array<{ serverName: string; error: string }> = [];
 
-  // Try a provided ref first, then fall back to common branch names.
-  const refCandidates = [
-    ...(ref ? [ref] : []),
-    ...(ref === 'main' ? [] : ['main']),
-    ...(ref === 'master' ? [] : ['master']),
-  ];
+  for (const e of entries) {
+    try {
+      const { id } = await installPluginFromLocalUrl({ baseUrl: e.baseUrl });
+      installed.push(id);
+    } catch (err) {
+      failed.push({
+        serverName: e.serverName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
-  return { owner, repo, refCandidates };
+  revalidatePluginPaths();
+  return { installed, failed, warnings };
+}
+
+/** All hooks exposed by enabled extensions — used by Extensions console LLM tool routing. */
+export async function listMcpExtensionToolsForLlm(): Promise<McpExtensionToolDescriptor[]> {
+  const rows = db
+    .prepare<
+      [],
+      {
+        plugin_id: string;
+        name: string;
+        capability: string;
+        method: string;
+        path: string;
+      }
+    >(
+      `
+      SELECT p.id AS plugin_id, p.name, ph.capability, ph.method, ph.path
+      FROM plugin_hooks ph
+      INNER JOIN plugins p ON p.id = ph.plugin_id
+      WHERE ph.enabled = 1 AND p.enabled = 1
+      ORDER BY p.name ASC, ph.capability ASC
+      `,
+    )
+    .all();
+
+  return rows.map((r) => ({
+    pluginId: r.plugin_id,
+    pluginName: r.name,
+    capability: r.capability,
+    method: r.method,
+    path: r.path,
+  }));
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit & { timeoutMs: number }): Promise<Response> {
@@ -120,26 +178,23 @@ async function fetchWithTimeout(input: string, init: RequestInit & { timeoutMs: 
   }
 }
 
-async function fetchPluginManifestFromGithub(githubUrl: string): Promise<{ manifest: PluginManifest; repoUrl: string }> {
-  const { owner, repo, refCandidates } = parseGitHubRepoUrl(githubUrl);
-
-  const filename = 'plugin.manifest.json';
-  for (const ref of refCandidates) {
-    const rawBase = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(ref)}`;
-    const manifestUrl = `${rawBase}/${filename}`;
+async function fetchPluginManifestFromLocal(baseUrl: string): Promise<PluginManifest> {
+  const manifestPathCandidates = ['/plugin.manifest.json', '/manifest.json', '/.well-known/muse-plugin.manifest.json'];
+  for (const p of manifestPathCandidates) {
+    const url = new URL(p, `${baseUrl}/`).toString();
     try {
-      const res = await fetchWithTimeout(manifestUrl, { method: 'GET', timeoutMs: 8000 });
+      const res = await fetchWithTimeout(url, { method: 'GET', timeoutMs: 8000 });
       if (!res.ok) continue;
       const json = (await res.json()) as unknown;
-      const manifest = parsePluginManifest(json);
-      return { manifest, repoUrl: `https://github.com/${owner}/${repo}` };
+      return parsePluginManifest(json);
     } catch {
-      // Try next candidate ref.
       continue;
     }
   }
-
-  throw new Error(`Could not fetch ${filename} from the provided GitHub repo URL.`);
+  throw new Error(
+    `Could not fetch plugin manifest from ${baseUrl}. Expected one of: ` +
+      `${manifestPathCandidates.map((p) => `"${p}"`).join(', ')}.`,
+  );
 }
 
 async function checkPluginHealthById(pluginId: string): Promise<void> {
@@ -153,15 +208,42 @@ async function checkPluginHealthById(pluginId: string): Promise<void> {
     .get(pluginId);
   if (!endpointRow) throw new Error('Plugin endpoint not found.');
 
-  let healthPath = '/health';
+  let manifestParsed: PluginManifest | null = null;
   try {
-    const parsed = JSON.parse(pluginRow.manifest_json) as PluginManifest;
-    healthPath = parsed?.service?.healthPath ?? '/health';
+    manifestParsed = parsePluginManifest(JSON.parse(pluginRow.manifest_json) as unknown);
   } catch {
-    // Ignore parse errors; keep default.
+    manifestParsed = null;
   }
 
-  const url = `${endpointRow.base_url}${healthPath}`;
+  /** MCP Streamable HTTP: probe tools/list on stored `…/mcp` endpoint. */
+  if (manifestParsed?.mcp?.endpointUrl) {
+    let healthStatus = 'unknown';
+    try {
+      const token =
+        endpointRow.auth_type === 'bearer'
+          ? resolveAuthRef(pluginId, endpointRow.auth_type, endpointRow.auth_ref)
+          : null;
+      await mcpListToolNames(manifestParsed.mcp.endpointUrl, token);
+      healthStatus = 'healthy';
+    } catch {
+      healthStatus = 'unhealthy:timeout';
+    }
+    db.prepare(
+      `UPDATE plugin_endpoints
+       SET health_status = ?, last_health_at = ?
+       WHERE plugin_id = ?`,
+    ).run(healthStatus, nowIso(), pluginId);
+    return;
+  }
+
+  let healthPath = '/health';
+  if (manifestParsed?.service?.healthPath) {
+    healthPath = manifestParsed.service.healthPath;
+  }
+
+  const base = endpointRow.base_url.replace(/\/+$/, '');
+  const path = healthPath.startsWith('/') ? healthPath : `/${healthPath}`;
+  const url = `${base}${path}`;
   let healthStatus = 'unknown';
 
   try {
@@ -323,34 +405,23 @@ export async function getPluginDetails(id: string): Promise<{
     healthPath: manifest.service.healthPath,
     authScheme: manifest.service.authScheme,
     requiredEnv: manifest.service.requiredEnv,
-    authType: endpointRow?.auth_type ?? manifest.service.authScheme,
+    authType: endpointRow?.auth_type ?? manifest.service.authScheme ?? 'none',
     authRef: endpointRow?.auth_ref ?? null,
   };
 
   return { plugin, manifest, hooks, uiExtensions, endpoint };
 }
 
-export async function installPluginFromGithubUrl(data: { githubUrl: string }): Promise<{ id: string }> {
-  const { githubUrl } = data;
-  const { manifest, repoUrl } = await fetchPluginManifestFromGithub(githubUrl);
-
-  if (!isMuseApiCompatible(manifest.museApiVersion, HOST_MUSE_API_VERSION)) {
-    throw new Error(
-      `Plugin API mismatch: plugin museApiVersion=${manifest.museApiVersion} (requires major ${HOST_MUSE_API_VERSION}).`,
-    );
-  }
-
-  if (!isWithinMuseVersionRange({
-    pluginMinMuseVersion: manifest.minMuseVersion,
-    pluginMaxMuseVersion: manifest.maxMuseVersion,
-    hostMuseVersion: HOST_MUSE_VERSION,
-  })) {
-    throw new Error(`Plugin version range not compatible with this Muse Studio version.`);
-  }
-
-  const pluginId = manifest.id;
+function runPluginInstallTransaction(params: {
+  pluginId: string;
+  manifest: PluginManifest;
+  sourceUrl: string;
+  endpointBaseUrl: string;
+  authScheme: string;
+}): void {
+  const { pluginId, manifest, sourceUrl, endpointBaseUrl, authScheme } = params;
   const now = nowIso();
-  const enabled = 0; // install but keep disabled until user explicitly enables.
+  const enabled = 0;
 
   db.transaction(() => {
     db.prepare(
@@ -376,9 +447,9 @@ export async function installPluginFromGithubUrl(data: { githubUrl: string }): P
       pluginId,
       manifest.name,
       manifest.version,
-      githubUrl.trim(),
-      repoUrl,
-      undefined,
+      sourceUrl,
+      null,
+      null,
       JSON.stringify(manifest),
       'installed',
       enabled,
@@ -387,7 +458,6 @@ export async function installPluginFromGithubUrl(data: { githubUrl: string }): P
       null,
     );
 
-    // Endpoints
     db.prepare(
       `
       INSERT INTO plugin_endpoints
@@ -400,16 +470,8 @@ export async function installPluginFromGithubUrl(data: { githubUrl: string }): P
         health_status = excluded.health_status,
         last_health_at = excluded.last_health_at
       `,
-    ).run(
-      pluginId,
-      manifest.service.baseUrl,
-      manifest.service.authScheme ?? 'none',
-      null,
-      'unknown',
-      null,
-    );
+    ).run(pluginId, endpointBaseUrl, authScheme, null, 'unknown', null);
 
-    // Replace hooks & UI extensions.
     db.prepare('DELETE FROM plugin_hooks WHERE plugin_id = ?').run(pluginId);
     db.prepare('DELETE FROM plugin_ui_extensions WHERE plugin_id = ?').run(pluginId);
 
@@ -457,21 +519,210 @@ export async function installPluginFromGithubUrl(data: { githubUrl: string }): P
         now,
       );
     }
+  })();
+}
+
+async function installFromMcpEndpointUrl(mcpEndpointUrl: string): Promise<{ id: string }> {
+  const { toolNames, serverName, serverVersion } = await withMcpClient(
+    mcpEndpointUrl,
+    async (client) => {
+      const { tools } = await client.listTools();
+      const names = (tools ?? [])
+        .map((t) => t.name)
+        .filter((n): n is string => Boolean(n) && !isAuxiliaryMcpTool(n));
+      const ver = client.getServerVersion();
+      return {
+        toolNames: names,
+        serverName: ver?.name ?? 'MCP Server',
+        serverVersion: ver?.version ?? '0.0.0',
+      };
+    },
+  );
+
+  const pluginId = `mcp_${createHash('sha256').update(mcpEndpointUrl).digest('hex').slice(0, 24)}`;
+
+  const hooks: PluginHook[] = toolNames.map((name) => ({
+    capability: inferMuseCapabilityForMcpTool(name),
+    method: 'MCP',
+    path: name,
+  }));
+
+  const manifest: PluginManifest = {
+    id: pluginId,
+    name: serverName,
+    version: serverVersion,
+    museApiVersion: '1',
+    service: {
+      baseUrl: mcpEndpointUrl,
+      healthPath: '/mcp',
+      authScheme: 'none',
+    },
+    hooks,
+    uiExtensions: [],
+    mcp: { endpointUrl: mcpEndpointUrl },
+  };
+
+  runPluginInstallTransaction({
+    pluginId,
+    manifest,
+    sourceUrl: mcpEndpointUrl,
+    endpointBaseUrl: mcpEndpointUrl,
+    authScheme: 'none',
   });
 
   await checkPluginHealthById(pluginId);
-  revalidatePath('/settings/plugins');
+  revalidatePluginPaths();
   return { id: pluginId };
+}
+
+export async function installPluginFromLocalUrl(data: { baseUrl: string }): Promise<{ id: string }> {
+  const raw = data.baseUrl.trim();
+  if (!raw) throw new Error('URL is required.');
+
+  try {
+    const baseUrl = normalizeBaseUrl(raw);
+    const manifest = await fetchPluginManifestFromLocal(baseUrl);
+
+    if (!isMuseApiCompatible(manifest.museApiVersion, HOST_MUSE_API_VERSION)) {
+      throw new Error(
+        `Plugin API mismatch: plugin museApiVersion=${manifest.museApiVersion} (requires major ${HOST_MUSE_API_VERSION}).`,
+      );
+    }
+
+    if (
+      !isWithinMuseVersionRange({
+        pluginMinMuseVersion: manifest.minMuseVersion,
+        pluginMaxMuseVersion: manifest.maxMuseVersion,
+        hostMuseVersion: HOST_MUSE_VERSION,
+      })
+    ) {
+      throw new Error(`Plugin version range not compatible with this Muse Studio version.`);
+    }
+
+    const pluginId = manifest.id;
+    runPluginInstallTransaction({
+      pluginId,
+      manifest,
+      sourceUrl: baseUrl,
+      endpointBaseUrl: baseUrl,
+      authScheme: manifest.service.authScheme ?? 'none',
+    });
+
+    await checkPluginHealthById(pluginId);
+    revalidatePluginPaths();
+    return { id: pluginId };
+  } catch (httpErr) {
+    try {
+      const mcpUrl = resolveMcpEndpointUrl(raw);
+      return await installFromMcpEndpointUrl(mcpUrl);
+    } catch (mcpErr) {
+      const a = httpErr instanceof Error ? httpErr.message : String(httpErr);
+      const b = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+      throw new Error(
+        `Could not register as Muse HTTP extension (${a}) or as an MCP Streamable HTTP server (${b}).`,
+      );
+    }
+  }
 }
 
 export async function setPluginEnabled(pluginId: string, enabled: boolean): Promise<void> {
   db.prepare('UPDATE plugins SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, pluginId);
-  revalidatePath('/settings/plugins');
+  revalidatePluginPaths();
+}
+
+export type McpConsoleHookRow = {
+  capability: string;
+  path: string;
+  method: string;
+  enabled: boolean;
+  mcpPolicy: 'auto' | 'ask';
+};
+
+export type McpConsolePluginGroup = {
+  pluginId: string;
+  pluginName: string;
+  enabled: boolean;
+  hooks: McpConsoleHookRow[];
+};
+
+/** Extensions console right panel: plugins and their MCP hooks with on/off and Ask/Auto policy. */
+export async function listMcpExtensionsConsolePlugins(): Promise<McpConsolePluginGroup[]> {
+  const rows = db
+    .prepare<[], { id: string; name: string; enabled: number }>(
+      `SELECT id, name, enabled FROM plugins ORDER BY name ASC`,
+    )
+    .all();
+
+  const hookStmt = db.prepare<
+    [string],
+    {
+      capability: string;
+      path: string;
+      method: string;
+      enabled: number;
+      mcp_policy: string | null;
+    }
+  >(
+    `SELECT capability, path, method, enabled,
+            COALESCE(mcp_policy, 'auto') AS mcp_policy
+     FROM plugin_hooks WHERE plugin_id = ? ORDER BY capability ASC`,
+  );
+
+  return rows.map((r) => {
+    const hooks = hookStmt.all(r.id);
+    return {
+      pluginId: r.id,
+      pluginName: r.name,
+      enabled: r.enabled === 1,
+      hooks: hooks.map((h) => ({
+        capability: h.capability,
+        path: h.path,
+        method: h.method,
+        enabled: h.enabled === 1,
+        mcpPolicy: h.mcp_policy === 'ask' ? 'ask' : 'auto',
+      })),
+    };
+  });
+}
+
+export async function setPluginHookEnabled(
+  pluginId: string,
+  capability: string,
+  enabled: boolean,
+): Promise<void> {
+  db.prepare(
+    `UPDATE plugin_hooks SET enabled = ?, updated_at = ? WHERE plugin_id = ? AND capability = ?`,
+  ).run(enabled ? 1 : 0, nowIso(), pluginId, capability);
+  revalidatePluginPaths();
+}
+
+export async function setPluginHookMcpPolicy(
+  pluginId: string,
+  capability: string,
+  mcpPolicy: 'auto' | 'ask',
+): Promise<void> {
+  db.prepare(
+    `UPDATE plugin_hooks SET mcp_policy = ?, updated_at = ? WHERE plugin_id = ? AND capability = ?`,
+  ).run(mcpPolicy, nowIso(), pluginId, capability);
+  revalidatePluginPaths();
+}
+
+/** Runtime: whether the LLM may run this hook immediately or must wait for user confirmation. */
+export async function getMcpHookMcpPolicy(
+  pluginId: string,
+  capability: string,
+): Promise<'auto' | 'ask'> {
+  const row = db
+    .prepare<[string, string], { mcp_policy: string | null }>(
+      `SELECT mcp_policy FROM plugin_hooks WHERE plugin_id = ? AND capability = ?`,
+    )
+    .get(pluginId, capability);
+  return row?.mcp_policy === 'ask' ? 'ask' : 'auto';
 }
 
 export async function deletePlugin(pluginId: string): Promise<void> {
   db.prepare('DELETE FROM plugins WHERE id = ?').run(pluginId);
-  revalidatePath('/settings/plugins');
+  revalidatePluginPaths();
 }
 
 export async function updatePlugin(pluginId: string): Promise<void> {
@@ -479,12 +730,12 @@ export async function updatePlugin(pluginId: string): Promise<void> {
     .prepare<[string], { source_url: string }>('SELECT source_url FROM plugins WHERE id = ?')
     .get(pluginId);
   if (!row) throw new Error('Plugin not found.');
-  await installPluginFromGithubUrl({ githubUrl: row.source_url });
+  await installPluginFromLocalUrl({ baseUrl: row.source_url });
 }
 
 export async function refreshPluginHealth(pluginId: string): Promise<void> {
   await checkPluginHealthById(pluginId);
-  revalidatePath('/settings/plugins');
+  revalidatePluginPaths();
 }
 
 // This is the runtime host contract (used by /api/plugins/call).
@@ -531,6 +782,28 @@ export async function callEnabledPluginsForCapability(params: {
   if (!target) {
     return { ok: false, error: `Plugin "${params.pluginId}" is not enabled for "${params.capability}".` };
   }
+
+  if (target.method === 'MCP') {
+    const authToken =
+      target.auth_type === 'bearer'
+        ? resolveAuthRef(target.plugin_id, target.auth_type, target.auth_ref)
+        : null;
+    try {
+      const inputObj =
+        params.input && typeof params.input === 'object' && !Array.isArray(params.input)
+          ? (params.input as Record<string, unknown>)
+          : {};
+      const data = await mcpCallToolJson(target.base_url, target.path, inputObj, authToken);
+      return { ok: true, data, pluginId: target.plugin_id };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+        pluginId: target.plugin_id,
+      };
+    }
+  }
+
   const url = new URL(target.path, target.base_url).toString();
 
   const timeoutMs = 30_000;

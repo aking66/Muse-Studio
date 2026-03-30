@@ -1,610 +1,194 @@
-# PlugIns Development Documentation
+# PlugIns Development Documentation (MCP Extensions)
 
-This document explains how third-party developers can create **Muse Plugin Extensions** (v1 MVP).
+This document describes the **current** extension architecture in Muse Studio.
 
-Muse Studio installs plugins from a **GitHub URL** by fetching a `plugin.manifest.json` file, then calls plugin endpoints via a **capability hook** contract.
+## TL;DR
 
-## Required Packages and Why
+- Muse is now **MCP-first** for Extensions.
+- The main user pages are:
+  - `Settings -> Extensions` (`/settings/extensions`)
+  - `Extensions Console` (`/mcp-extensions`)
+- The old GitHub `plugin.manifest.json` flow is no longer the recommended primary path for development in this repo.
+- Extension startup, registration, and tool routing are now based on MCP server tools and policies.
 
-Plugin developers should understand the two contract packages used by Muse:
+---
 
-### 1) `packages/plugin-sdk` (manifest/install-time contract)
+## 1) Current Architecture
 
-Use this for plugin definition and compatibility checks.
+Muse Studio acts as an MCP client/orchestrator:
 
-- Validates `plugin.manifest.json` shape
-- Defines manifest types (`service`, `hooks`, `uiExtensions`, `permissions`)
-- Enforces API compatibility (`museApiVersion`, min/max host version)
+1. User configures an extension endpoint in **Settings -> Extensions**.
+2. Muse discovers MCP tools from that endpoint and stores them in SQLite.
+3. `/mcp-extensions` chat uses the LLM to pick a tool + input, then executes the tool through MCP.
+4. Tool output (image/video/json) is rendered in chat.
+5. Media can be assigned to project assets (keyframe/character/scene) from chat.
 
-In short: **this is the plugin registration contract**.
+### Important behavior
 
-### 2) `packages/plugin-host` (runtime capability contract)
+- Tools can be enabled/disabled per extension and per hook.
+- Each tool has policy:
+  - `auto`: runs immediately when planned.
+  - `ask`: requires user confirmation before execution.
 
-Use this for endpoint request/response payloads your plugin serves.
+---
 
-- Defines `image.generate` input/output types
-- Defines `video.generate` input/output types
-- Defines generic capability call envelope types
+## 2) Storage and Control Plane (SQLite)
 
-In short: **this is the runtime generation contract**.
+Muse stores extension metadata in:
 
-### Canonical source of truth (host + authors)
+- `plugins`
+- `plugin_endpoints`
+- `plugin_hooks`
+- `plugin_ui_extensions`
+- `plugin_settings`
 
-| Concern | Package | Edit here (not in the app) |
-|--------|---------|----------------------------|
-| Manifest Zod schema, `parsePluginManifest`, version helpers | `@muse/plugin-sdk` (`packages/plugin-sdk`) | `packages/plugin-sdk/src/manifest.ts` |
-| Image/video capability DTOs, hook call envelope | `@muse/plugin-host` (`packages/plugin-host`) | `packages/plugin-host/src/contract.ts` |
+Additional MCP console state:
 
-Muse Studio imports these workspace packages (`file:` dependencies + `transpilePackages` in `next.config.ts`) and exposes thin re-exports under `muse-studio/lib/plugin-extension/*` for stable `@/` imports. Those files **must not** duplicate schemas—only re-export from the packages above.
+- `plugin_hooks.mcp_policy` (`auto` | `ask`)
+- `mcp_extensions_chat_messages` (chat history rows for `/mcp-extensions`)
 
-**Build / tooling notes (contributors):**
+---
 
-- Production and dev scripts use **`next build --webpack`** / **`next dev --webpack`** so webpack resolves `@muse/*` from `muse-studio/node_modules` and nested deps (Turbopack + Windows has known gaps for this layout).
-- Run **`npm install` inside `packages/plugin-sdk`** once so `zod` exists next to the SDK sources when the bundler follows `file:` links into `packages/`.
+## 3) MCP Transport and Endpoints
 
-### How these sections connect
+Supported runtime shape for this project:
 
-To build a working plugin, follow this order:
+- **Streamable HTTP MCP** (`POST /mcp`) for server-style extensions.
+- `stdio` for local/client workflows (outside Muse HTTP registration path).
 
-1. **Read “Required Packages and Why”**  
-   Understand that:
-   - `packages/plugin-sdk` = manifest/install contract
-   - `packages/plugin-host` = runtime generation contract
-2. **Use “Manifest File: plugin.manifest.json”**  
-   Define your plugin metadata, service URL, hooks, permissions, and compatibility.
-3. **Use “Canonical Capability Payloads (Image + Video)”**  
-   Implement your endpoint handlers to accept and return the exact payload shapes.
-4. **Use “Reference Plugin Project Structure”**  
-   Organize your plugin repo so Muse can install and call it consistently.
-5. **Run “End-to-End Verification Checklist”**  
-   Validate installation, health, provider selection in UI, generation, and output attachment.
+For HTTP registration in Muse Settings:
 
-## 1. Plugin MVP Model
+- Use base URL like `http://127.0.0.1:18182/mcp` (or host/port variant).
+- Muse will probe/list tools and map MCP tool names to Muse capabilities.
 
-- Plugin code runs **outside** Muse Studio (Muse calls it over HTTP).
-- Muse Studio stores the plugin’s manifest + enabled state in SQLite.
-- Plugins declare:
-  - one or more **hooks** (capabilities Muse can call)
-  - optional **UI extensions** (frontend bundles Muse displays in a sandboxed iframe)
+---
 
-## 2. Repository Requirements
+## 4) Extension Development Model (Now)
 
-Your plugin repo must contain a file named:
+### Do this
 
-- `plugin.manifest.json`
+- Build an MCP server exposing tools (for example `zimage_generate`, `zimage_health`).
+- Return structured JSON with media paths/URLs where relevant.
+- Keep tool names stable and descriptive.
 
-Muse’s Plugin Manager (MVP) expects that file at the **repo root** for the ref it tries to install.
+### Don’t rely on old assumptions
 
-### What to paste in Muse Plugin Manager
+- No requirement to publish via GitHub manifest for normal local development.
+- No requirement to implement old `/hooks/<capability>` HTTP endpoints for MCP mode.
 
-You paste a GitHub URL like:
+---
 
-- `https://github.com/<owner>/<repo>`
-- or `https://github.com/<owner>/<repo>/tree/<ref>`
-- or `https://github.com/<owner>/<repo>/blob/<ref>`
+## 5) Tool Mapping and Execution
 
-Muse tries the provided ref, then falls back to `main` / `master`.
+At runtime:
 
-## 3. Manifest File: `plugin.manifest.json`
+1. LLM receives the tool catalog (enabled tools only).
+2. LLM outputs JSON orchestration plan (`capability`, optional `pluginId`, `input`).
+3. Muse resolves target tool.
+4. If policy is:
+   - `auto` -> execute immediately.
+   - `ask` -> return pending approval to UI; user confirms; then execute.
 
-At a minimum your manifest must include:
+The Extensions chat UI now includes:
 
-- `id`, `name`, `version`
-- `museApiVersion` (host compatibility; currently major must match)
-- `service.baseUrl`
-- `service.authScheme` (`none` or `bearer`)
-- `hooks` (at least one capability)
-- optional `uiExtensions`
+- tool previews
+- pending approval banner for `ask` mode
+- quick “Run MCP tool…” dialog for direct tool invocation with JSON args
 
-### Example Manifest
+---
 
-```json
-{
-  "id": "my-company-comfyui-nodepack",
-  "name": "My NodePack Extension",
-  "version": "1.5.0",
-  "author": "My Company",
-  "description": "Adds image.generate support via an external service.",
-  "museApiVersion": "1",
-  "service": {
-    "baseUrl": "http://localhost:8080",
-    "healthPath": "/health",
-    "authScheme": "none"
-  },
-  "permissions": ["media:generate"],
-  "hooks": [
-    {
-      "capability": "image.generate",
-      "method": "POST"
-      // Optional:
-      // "path": "/hooks/image.generate"
-      // If omitted, host derives the path.
-    }
-  ],
-  "uiExtensions": [
-    {
-      "slot": "settings.tab",
-      "bundleUrl": "http://localhost:8081/ui/settings-tab.html"
-      // Optional: "integrityHash"
-    }
-  ]
-}
-```
+## 6) Media Output Handling
 
-## 4. Hook Contract (Capability Endpoints)
+For image/video tool results:
 
-### 4.1 Capability Names
+- Muse normalizes output preview URLs and supports full-size lightbox.
+- Chat provides assignment actions:
+  - Image -> assign to keyframe or character
+  - Video -> assign to scene
+- Source files under `outputs/drafts/mcp-extensions/...` are accepted for promotion into project libraries.
 
-The `hooks[].capability` value is a string like:
+---
 
-- `image.generate`
-- `scene.generate`
-- `video.generate`
+## 7) Reference: `plugin-template-zimage-turbo`
 
-Muse calls a hook by matching enabled plugins that declare the requested capability.
-
-### 4.2 HTTP Method
-
-- `hooks[].method` controls which HTTP method Muse uses.
-- Default is `POST`.
-
-### 4.3 HTTP Path
-
-- If you specify `hooks[].path`, Muse will call that path.
-- If you omit `path`, Muse will derive it with this MVP rule:
-  - `/hooks/<url_encoded(capability)>`
-  - for example `image.generate` becomes `/hooks/image.generate` (URL encoding is applied)
-
-### 4.4 Request Headers (what Muse sends)
-
-Muse sends:
-
-- `content-type: application/json`
-- `x-muse-capability: <capability>`
-- `x-muse-request-id: <request id>`
-- optionally: `x-muse-project-id: <projectId>` (only when a project-scoped call is used)
-
-If your manifest sets `service.authScheme` to `"bearer"`:
-
-- Muse may also send: `Authorization: Bearer <token>`
-- In the current MVP, the token is resolved from an environment variable:
-  - `MUSE_PLUGIN_BEARER_TOKEN_<PLUGIN_ID>` (plugin id uppercased, non-alnum replaced with `_`)
-
-### 4.5 Request Body (what Muse sends)
-
-Muse forwards the `input` object as the **raw JSON body**.
-
-So your endpoint should expect the request body to be:
-
-- the JSON value Muse provided as `input` (MVP does not wrap it)
-
-### 4.6 Response (what Muse expects)
-
-Return either:
-
-- JSON with `Content-Type: application/json` (recommended), or
-- plain text (Muse will pass it through as a string)
-
-For JSON, return a JSON value (object/array/string), e.g.:
-
-```json
-{ "status": "ok", "result": { "url": "http://..." } }
-```
-
-## 5. Health Endpoint
-
-Muse displays a health status by calling:
-
-- `service.baseUrl + service.healthPath`
-
-Defaults:
-
-- `healthPath` defaults to `/health`
-
-For example:
-
-- baseUrl: `http://localhost:8080`
-- healthPath: `/health`
-- health URL called by Muse: `http://localhost:8080/health`
-
-If it returns `2xx`, status becomes `healthy`; otherwise it becomes `unhealthy:<statusCode>` (timeout becomes `unhealthy:timeout`).
-
-## 6. UI Extension Contract (Optional)
-
-If your manifest includes `uiExtensions`, Muse will render them in an isolated sandboxed iframe.
-
-### 6.1 Slots
-
-`uiExtensions[].slot` is a string identifying where the UI should appear (MVP currently supports only a preview-like rendering).
-
-### 6.2 Bundle URL
-
-`uiExtensions[].bundleUrl` is loaded as the iframe `src`.
-
-MVP sandbox settings:
-
-- `sandbox="allow-scripts"`
-
-### 6.3 postMessage Init
-
-When the iframe loads, Muse sends an initialization message:
-
-- `{ "type": "MUSE_UI_INIT", "pluginId": "<id>", "slot": "<slot>" }`
-
-Your UI can listen for this message via `window.addEventListener('message', ...)`.
-
-## 7. Practical Plugin Server Example (Minimal Pseudocode)
-
-Your external service should expose:
-
-- `GET /health` (or whatever `service.healthPath` sets)
-- `POST /hooks/<capability>`
-
-Example (conceptual):
-
-```ts
-app.get("/health", (_req, res) => res.json({ ok: true }));
-
-app.post("/hooks/image.generate", (req, res) => {
-  // req.body is the raw forwarded input JSON
-  const input = req.body;
-  // ... do work ...
-  res.json({ ok: true, result: { /* ... */ } });
-});
-```
-
-## 8. Debugging Tips
-
-- If Muse cannot install your plugin, verify:
-  - `plugin.manifest.json` exists at repo root
-  - `museApiVersion` major matches the host (`"1"`)
-  - `service.baseUrl` is reachable from the Muse machine
-- If health shows `unhealthy`, verify:
-  - health endpoint path exists
-  - service is reachable
-- If capability calls fail, verify:
-  - hook capability name matches exactly
-  - HTTP method matches `hooks[].method` (default POST)
-  - endpoint path matches your manifest (or Muse’s derived rule)
-  - response is valid JSON (if you return JSON)
-
-## 9. MVP Limitations (Important)
-
-- MVP calls only the **first enabled** plugin that declares a capability.
-- Signature verification and strict UI bundle integrity checks are not enforced in MVP.
-- Secrets handling is not implemented via `plugin_settings` yet; bearer tokens use the current env-var approach.
-
-## 10. Canonical Capability Payloads (Image + Video)
-
-Use these payloads as the stable contract for provider-mode integrations.
-
-### 10.1 `image.generate` input
-
-```json
-{
-  "projectId": "proj-001",
-  "sceneId": "scene-001",
-  "keyframeId": "kf-001",
-  "sequenceOrder": 1,
-  "prompt": "cinematic wide shot, blue hour, fog",
-  "generationParams": {
-    "denoiseStrength": 0.35,
-    "styleStrength": 0.5,
-    "aspectRatio": "16:9",
-    "referenceWeight": 0.6
-  },
-  "referenceImages": [
-    {
-      "url": "/api/outputs/refs/char-001/look.png",
-      "width": 1024,
-      "height": 576
-    }
-  ],
-  "pluginParams": {
-    "rawInputs": {
-      "prompt_node": "cinematic wide shot, blue hour, fog"
-    }
-  }
-}
-```
-
-### 10.2 `image.generate` output
-
-```json
-{
-  "finalImage": {
-    "url": "https://plugin.example.com/outputs/img-123.png",
-    "width": 1280,
-    "height": 720,
-    "alt": "Generated keyframe"
-  },
-  "draftImage": {
-    "url": "https://plugin.example.com/outputs/img-123-draft.png"
-  },
-  "metadata": {
-    "seed": 12345,
-    "model": "wan-2.2-image"
-  }
-}
-```
-
-### 10.3 `video.generate` input
-
-```json
-{
-  "projectId": "proj-001",
-  "sceneId": "scene-001",
-  "prompt": "slow dolly push-in, cinematic lighting",
-  "sourceImages": [
-    {
-      "url": "/api/outputs/drafts/proj-001/library/shot-a.png",
-      "width": 1280,
-      "height": 720
-    }
-  ],
-  "generationParams": {
-    "durationSec": 4,
-    "fps": 24,
-    "aspectRatio": "16:9",
-    "seed": 9876
-  },
-  "pluginParams": {
-    "rawInputs": {
-      "motion_strength": 0.7
-    }
-  }
-}
-```
-
-### 10.4 `video.generate` output
-
-```json
-{
-  "finalVideo": {
-    "url": "https://plugin.example.com/outputs/vid-001.mp4",
-    "durationSec": 4.0
-  },
-  "metadata": {
-    "providerLatencyMs": 1820
-  }
-}
-```
-
-## 11. Reference Plugin Project Structure
-
-Recommended folder layout:
-
-```text
-my-muse-plugin/
-  plugin.manifest.json
-  package.json
-  src/
-    server.ts
-    routes/
-      health.ts
-      hooks.image-generate.ts
-      hooks.video-generate.ts
-```
-
-### 11.1 TypeScript typing with `packages/plugin-host`
-
-If your plugin code lives in this monorepo, import types directly:
-
-```ts
-import type {
-  MuseImageGenerateInput,
-  MuseImageGenerateOutput,
-  MuseVideoGenerateInput,
-  MuseVideoGenerateOutput,
-} from "../../packages/plugin-host/src/contract";
-```
-
-If your plugin is in a separate repository, copy the type shapes from this document (or publish and consume a shared npm package in your own workflow).
-
-### 11.2 Minimal typed handlers
-
-```ts
-app.post("/hooks/image.generate", (req, res) => {
-  const input = req.body as MuseImageGenerateInput;
-  const out: MuseImageGenerateOutput = {
-    finalImage: { url: "https://plugin.example.com/outputs/img.png" },
-  };
-  res.json(out);
-});
-
-app.post("/hooks/video.generate", (req, res) => {
-  const input = req.body as MuseVideoGenerateInput;
-  const out: MuseVideoGenerateOutput = {
-    finalVideo: { url: "https://plugin.example.com/outputs/vid.mp4" },
-  };
-  res.json(out);
-});
-```
-
-### 11.3 Demo template in this repository
-
-You can start from the included reference template:
+Path:
 
 - `packages/plugin-template-zimage-turbo/`
 
-This template demonstrates:
+This template is now **MCP-only**.
 
-- `plugin.manifest.json` setup for `image.generate`
-- FastAPI service with:
-  - `GET /health`
-  - `POST /hooks/image.generate`
-- Canonical payload parsing and response shaping
-- Local output file hosting via `/assets/...`
+Key files:
 
-It is modeled after the Z-Image Turbo provider style (`muse_backend/app/providers/image/zimage_provider.py`) but intentionally keeps inference as a demo/stub so developers can replace the adapter with their own real pipeline.
+- `app/mcp_server.py` (FastMCP server entry)
+- `app/zimage_adapter.py` (generation adapter)
+- `app/config_loader.py` (`.env` and model config loading)
+- `.env.example`
+- `requirements.txt`
 
-## 12. Where Plugins Appear in Muse UI
+Startup scripts:
 
-Plugins are shown in two categories:
+- `start-mcp.bat`
+- `start-mcp.sh`
 
-- **Settings management**
-  - `Settings -> Plugins` for install, enable/disable, update, delete, health checks.
-- **Provider usage in generation flows**
-  - `Playground` supports provider selection: `ComfyUI` or `Plugin`.
-  - `Kanban scene generation dialog` supports provider selection: `ComfyUI` or `Plugin`.
+These start scripts run the MCP server using shared Python venv at:
 
-For provider mode, Muse lists enabled plugins by capability:
+- `../muse_backend/.venv` (preferred per request)
+- with monorepo fallback `../../muse_backend/.venv`
 
-- image mode -> plugins with `image.generate`
-- video mode -> plugins with `video.generate`
+Run examples:
 
-## 13. Provider Selection and API Flow
+```bash
+# Windows
+packages\plugin-template-zimage-turbo\start-mcp.bat
 
-When plugin provider is selected:
+# Bash
+bash packages/plugin-template-zimage-turbo/start-mcp.sh
+```
 
-1. Frontend asks for providers by capability:
-   - `GET /api/plugins/providers?capability=image.generate`
-   - `GET /api/plugins/providers?capability=video.generate`
-2. Frontend submits generation request to:
-   - `POST /api/generate/plugin-provider`
-3. Backend calls the selected plugin capability endpoint and normalizes output to `outputs/...`.
-4. Frontend receives:
-   - `output_path` (relative under `outputs`)
-   - `output_url` (`/api/outputs/<output_path>`)
+---
 
-## 14. Output URL/Path Handling Rules
+## 8) Recommended Local Dev Workflow
 
-Your plugin may return `finalImage.url` / `finalVideo.url` in one of these forms:
+1. Start the extension MCP server (for example zimage template).
+2. Open `Settings -> Extensions`.
+3. Register MCP endpoint URL.
+4. Enable extension and desired tools; set policy (`auto` or `ask`).
+5. Open `/mcp-extensions`.
+6. Test via chat or “Run MCP tool…”.
+7. Verify media preview + assignment actions.
 
-- **HTTP(S) URL** (recommended for remote plugin runtimes)
-  - Muse downloads and stores a copy under `outputs/...`.
-- **`/api/outputs/...` URL**
-  - Muse copies from its local outputs tree.
-- **outputs-relative path**
-  - Muse treats it as already inside outputs and copies it.
+---
 
-This guarantees stable media paths for project libraries and scene attachments.
+## 9) Backward Compatibility Note
 
-## 15. Fallback Behavior (Current UX)
+Muse still contains compatibility code paths for non-MCP plugin-style integrations, but active development should target the MCP extension architecture described above.
 
-If plugin provider generation fails in UI and a ComfyUI workflow is available:
+If documentation elsewhere mentions:
 
-- Playground and Kanban dialogs may automatically fallback to ComfyUI (best-effort).
-- The plugin error is surfaced to user contextually.
+- mandatory GitHub `plugin.manifest.json`,
+- `/hooks/<capability>` as primary runtime path,
+- old `Settings -> Plugins` flow,
 
-Plugin developers should still return clear error messages on non-2xx responses to help debugging.
+consider those references legacy and update to `Settings -> Extensions` + MCP.
 
-## 16. End-to-End Verification Checklist
+---
 
-Use this checklist when validating your plugin:
+## 10) Troubleshooting
 
-1. Install plugin from GitHub in `Settings -> Plugins`.
-2. Enable plugin and confirm health is `healthy`.
-3. Open Playground:
-   - choose `Image` or `Video`
-   - switch provider to `Plugin`
-   - verify your plugin appears in provider dropdown.
-4. Generate media and verify:
-   - response preview renders in UI
-   - `output_path` exists under `outputs/...`
-5. Repeat in Kanban generation dialog.
-6. For image flow, save as keyframe and confirm it appears in scene state.
-7. For video flow, confirm scene video URL updates and review status is set.
+- **Extension not listed in chat tool catalog**
+  - Check extension is enabled.
+  - Check tool hook is enabled.
+  - Confirm endpoint reachable and tool discovery succeeds.
 
-## 17. Plugin Runtime Strategy (Storage + Isolation)
+- **Tool always asks for confirmation**
+  - Change hook policy from `ask` to `auto` in right panel on `/mcp-extensions`.
 
-This section defines how Muse should run plugin services at scale without forcing one full Python environment per plugin.
+- **Media generated but not assignable**
+  - Ensure returned preview path resolves under Muse `outputs/`.
+  - Verify file extension is supported image/video format.
 
-### 17.1 Goals
-
-The plugin runtime should:
-
-- minimize per-plugin storage overhead,
-- avoid dependency conflicts that can break other plugins,
-- preserve plugin isolation where needed,
-- keep install/update UX simple for end users.
-
-### 17.2 Recommended Model: Hybrid Runtime
-
-Use a hybrid strategy:
-
-- **Shared runtime (default)**  
-  One common Python runtime for most plugins.
-- **Isolated runtime (advanced/opt-in)**  
-  Dedicated runtime only for plugins with dependency conflicts or special native requirements.
-
-This avoids the cost of creating 100 independent venv folders while preserving an escape hatch for incompatible plugins.
-
-### 17.3 Runtime Tiers
-
-#### Tier A — Shared Runtime (default)
-
-- Lowest disk usage.
-- Fastest install path.
-- Best for plugins using common dependency sets.
-
-#### Tier B — Isolated Runtime (advanced)
-
-- Strong dependency isolation.
-- Higher disk usage.
-- Best for plugins requiring conflicting dependency versions, specialized CUDA/native libs, or strict enterprise isolation.
-
-### 17.4 Install-time Policy
-
-At plugin install/update:
-
-1. Validate `plugin.manifest.json`.
-2. Resolve plugin dependency requirements.
-3. Attempt install in **shared runtime** first.
-4. If conflicts are detected:
-   - show conflict summary to user,
-   - offer **Install in isolated runtime**.
-5. Persist runtime mode in plugin metadata.
-
-### 17.5 Storage Strategy
-
-To prevent runtime bloat:
-
-- keep a global package/wheel cache,
-- reuse downloaded artifacts across runtime installs,
-- prune stale caches/runtimes periodically,
-- display per-plugin disk impact in Plugin Manager.
-
-### 17.6 Recommended Metadata Per Plugin
-
-Store runtime metadata such as:
-
-- `runtime_mode`: `shared` | `isolated`
-- `runtime_id`
-- `python_version`
-- `resolved_dependencies_hash`
-- `install_size_mb`
-- `last_health_status`
-- `last_start_error`
-
-### 17.7 Security and Reliability Guidance
-
-Regardless of runtime mode:
-
-- keep plugin process external to core Muse processes,
-- enforce capability-scoped calls (`image.generate`, `video.generate`, etc.),
-- inject secrets/tokens via controlled runtime env policy,
-- ensure one plugin runtime failure does not crash other plugins.
-
-### 17.8 Plugin Manager UX Recommendations
-
-Expose runtime choices during install:
-
-- `Shared runtime (recommended)`
-- `Isolated runtime (advanced)`
-
-Also show:
-
-- estimated disk impact,
-- dependency conflict warnings,
-- one-click remediation path (“move to isolated runtime”).
-
-### 17.9 Suggested Defaults
-
-For practical rollout:
-
-- default to **shared runtime**,
-- only offer isolated runtime when conflict detected,
-- keep artifact cache enabled by default,
-- provide optional cleanup controls for power users.
+- **HTTP MCP errors**
+  - Confirm server is running with `streamable-http`.
+  - Confirm endpoint path is `/mcp`.
+  - Confirm client request headers include `Accept: application/json, text/event-stream` when required by server stack.
 

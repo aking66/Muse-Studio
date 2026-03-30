@@ -51,10 +51,7 @@ import { JOB_POLL_INTERVAL_MS } from '@/lib/jobs/jobPolling';
 import { useSingleJobPoll } from '@/hooks/useJobPoll';
 import {
   buildComfyUiGeneratePayload,
-  buildPluginProviderPayload,
   mergeComfyMergedValues,
-  promptFromFirstTextInput,
-  referenceImagesFromFilePaths,
 } from '@/lib/generation/comfyPluginGeneration';
 
 const PLAYGROUND_SCENE_ID = 'playground';
@@ -70,15 +67,6 @@ interface PlaygroundPageClientProps {
   workflows: ComfyWorkflowSummary[];
   projects: PlaygroundProjectSummary[];
 }
-
-type PluginProviderSummary = {
-  id: string;
-  name: string;
-  version: string;
-  capability: string;
-  method: string;
-  path: string;
-};
 
 type Phase = 'loading' | 'idle' | 'submitting' | 'polling' | 'result' | 'error';
 
@@ -101,13 +89,10 @@ const CHARACTER_KIND_OPTIONS: CharacterImageKind[] = [
 export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClientProps) {
   const router = useRouter();
   const [kind, setKind] = useState<'image' | 'video'>('image');
-  const [providerMode, setProviderMode] = useState<'comfyui' | 'plugin'>('comfyui');
   const filteredWorkflows = useMemo(
     () => workflows.filter((w) => w.kind === kind),
     [workflows, kind],
   );
-  const [pluginProviders, setPluginProviders] = useState<PluginProviderSummary[]>([]);
-  const [activePluginId, setActivePluginId] = useState<string | null>(null);
 
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -174,32 +159,6 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
       prev && filteredWorkflows.some((w) => w.id === prev) ? prev : filteredWorkflows[0]!.id,
     );
   }, [kind, filteredWorkflows]);
-
-  useEffect(() => {
-    const capability = kind === 'image' ? 'image.generate' : 'video.generate';
-    let cancelled = false;
-    fetch(`/api/plugins/providers?capability=${encodeURIComponent(capability)}`, {
-      cache: 'no-store',
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        const providers = (d?.providers ?? []) as PluginProviderSummary[];
-        setPluginProviders(providers);
-        setActivePluginId((prev) =>
-          prev && providers.some((p) => p.id === prev) ? prev : providers[0]?.id ?? null,
-        );
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPluginProviders([]);
-          setActivePluginId(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [kind]);
 
   // Load workflow JSON + parse inputs
   useEffect(() => {
@@ -508,99 +467,39 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
 
   async function handleGenerate() {
     if (!validateInputs()) return;
-    if (providerMode === 'comfyui' && !activeWorkflowId) return;
-    if (providerMode === 'plugin' && !activePluginId) {
-      setError('No enabled plugin provider found for this capability.');
-      setPhase('error');
-      return;
-    }
+    if (!activeWorkflowId) return;
     setPhase('submitting');
     setError(null);
     const merged = mergeComfyMergedValues(inputValues, filePaths);
-    const prompt = promptFromFirstTextInput(inputs, merged);
-    const referenceImages = referenceImagesFromFilePaths(filePaths);
     try {
-      const route =
-        providerMode === 'comfyui' ? '/api/generate/comfyui' : '/api/generate/plugin-provider';
-      const payload =
-        providerMode === 'comfyui'
-          ? buildComfyUiGeneratePayload({
-              workflowId: activeWorkflowId!,
-              sceneId: PLAYGROUND_SCENE_ID,
-              kind,
-              mergedValues: merged,
-              projectId: chatProjectId,
-            })
-          : buildPluginProviderPayload({
-              pluginId: activePluginId!,
-              sceneId: PLAYGROUND_SCENE_ID,
-              kind,
-              mergedValues: merged,
-              referenceImages,
-              prompt,
-              projectId: chatProjectId,
-              imagePromptFallback: 'Generate image',
-            });
+      const payload = buildComfyUiGeneratePayload({
+        workflowId: activeWorkflowId,
+        sceneId: PLAYGROUND_SCENE_ID,
+        kind,
+        mergedValues: merged,
+        projectId: chatProjectId,
+      });
 
-      const res = await fetch(route, {
+      const res = await fetch('/api/generate/comfyui', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
-        // Fallback: if plugin mode fails and a Comfy workflow is available, retry once via ComfyUI.
-        if (providerMode === 'plugin' && activeWorkflowId) {
-          const fallbackRes = await fetch('/api/generate/comfyui', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(
-              buildComfyUiGeneratePayload({
-                workflowId: activeWorkflowId!,
-                sceneId: PLAYGROUND_SCENE_ID,
-                kind,
-                mergedValues: merged,
-                projectId: chatProjectId,
-              }),
-            ),
-          });
-          const fallbackData = await fallbackRes.json();
-          if (fallbackRes.ok && fallbackData?.job_id) {
-            setError(`Plugin failed; fell back to ComfyUI (${data?.error ?? 'unknown plugin error'}).`);
-            const jid = fallbackData.job_id as string;
-            setJobId(jid);
-            setPhase('polling');
-            startPolling(jid);
-            return;
-          }
-        }
         setError(data?.error ?? 'Generation request failed.');
         setPhase('error');
         return;
       }
-      if (providerMode === 'plugin') {
-        const outputPath = data.output_path as string | undefined;
-        const outputUrl = data.output_url as string | undefined;
-        if (!outputPath || !outputUrl) {
-          setError('Plugin provider response missing output path/url.');
-          setPhase('error');
-          return;
-        }
-        setJobId(data.plugin_id ? `plugin:${String(data.plugin_id).slice(0, 18)}` : null);
-        setResultPath(outputPath);
-        setResultUrl(outputUrl);
-        setPhase('result');
-      } else {
-        const jid = data.job_id as string | undefined;
-        if (!jid) {
-          setError('No job id returned.');
-          setPhase('error');
-          return;
-        }
-        setJobId(jid);
-        setPhase('polling');
-        startPolling(jid);
+      const jid = data.job_id as string | undefined;
+      if (!jid) {
+        setError('No job id returned.');
+        setPhase('error');
+        return;
       }
+      setJobId(jid);
+      setPhase('polling');
+      startPolling(jid);
     } catch {
       setError('Network error. Is the backend running?');
       setPhase('error');
@@ -620,7 +519,11 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
             <div>
               <h1 className="text-sm font-semibold text-foreground">Media playground</h1>
               <p className="text-[11px] text-muted-foreground">
-                ComfyUI workflows only — outputs go to{' '}
+                ComfyUI workflows only (use{' '}
+                <Link href="/mcp-extensions" className="text-violet-400 hover:underline">
+                  Extensions
+                </Link>{' '}
+                for extension tools). Outputs go to{' '}
                 <code className="rounded bg-white/10 px-1">
                   {chatProjectId ? `drafts/playground/${chatProjectId}/` : 'drafts/playground/'}
                 </code>
@@ -669,65 +572,34 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
               </button>
             </div>
             <p className="text-[10px] text-muted-foreground/60">
-              Choose ComfyUI workflow mode or installed plugin providers for image/video inference.
+              ComfyUI workflows for image/video inference. Extension tools run in{' '}
+              <Link href="/mcp-extensions" className="text-violet-400 hover:underline">
+                Extensions
+              </Link>
+              .
             </p>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">Provider</label>
-              <select
-                value={providerMode}
-                onChange={(e) => setProviderMode(e.target.value as 'comfyui' | 'plugin')}
-                disabled={isBusy}
-                className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs"
-              >
-                <option value="comfyui">ComfyUI workflow</option>
-                <option value="plugin">Plugin provider</option>
-              </select>
-            </div>
-
-            {providerMode === 'comfyui' && filteredWorkflows.length === 0 ? (
+            {filteredWorkflows.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 No {kind} workflows registered. Add one under Settings → ComfyUI.
               </p>
-            ) : providerMode === 'plugin' && pluginProviders.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No enabled plugin providers for {kind}. Install/enable one in Settings → Plugins.
-              </p>
             ) : (
               <>
-                {providerMode === 'comfyui' ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-muted-foreground">Workflow</label>
-                    <select
-                      value={activeWorkflowId ?? ''}
-                      onChange={(e) => setActiveWorkflowId(e.target.value || null)}
-                      disabled={phase === 'loading' || isBusy}
-                      className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs"
-                    >
-                      {filteredWorkflows.map((wf) => (
-                        <option key={wf.id} value={wf.id}>
-                          {wf.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-muted-foreground">Plugin provider</label>
-                    <select
-                      value={activePluginId ?? ''}
-                      onChange={(e) => setActivePluginId(e.target.value || null)}
-                      disabled={isBusy}
-                      className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs"
-                    >
-                      {pluginProviders.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (v{p.version})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground">Workflow</label>
+                  <select
+                    value={activeWorkflowId ?? ''}
+                    onChange={(e) => setActiveWorkflowId(e.target.value || null)}
+                    disabled={phase === 'loading' || isBusy}
+                    className="w-full rounded-lg border border-white/12 bg-black/40 px-3 py-2 text-xs"
+                  >
+                    {filteredWorkflows.map((wf) => (
+                      <option key={wf.id} value={wf.id}>
+                        {wf.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 {phase === 'loading' && (
                   <div className="flex justify-center py-8">
@@ -908,8 +780,8 @@ export function PlaygroundPageClient({ workflows, projects }: PlaygroundPageClie
                 <Button
                   className="w-full bg-violet-600 hover:bg-violet-500"
                   disabled={
-                    (providerMode === 'comfyui' && (!activeWorkflowId || filteredWorkflows.length === 0)) ||
-                    (providerMode === 'plugin' && (!activePluginId || pluginProviders.length === 0)) ||
+                    !activeWorkflowId ||
+                    filteredWorkflows.length === 0 ||
                     phase === 'loading' ||
                     isBusy
                   }

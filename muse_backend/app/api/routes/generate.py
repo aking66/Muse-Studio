@@ -1,8 +1,8 @@
 """
-POST /generate/* — Core inference endpoints for all three Muse agents.
+POST /generate/* — Core inference endpoints.
 
-  POST /generate/draft     → Visual Muse Step 1 (Qwen Image Edit)
-  POST /generate/refine    → Visual Muse Step 2 (Z-Image Turbo)
+  POST /generate/draft     → DEPRECATED (migrated to MCP Extensions / ComfyUI)
+  POST /generate/refine    → DEPRECATED (migrated to MCP Extensions / ComfyUI)
   POST /generate/video     → Motion Muse (async job, returns job_id)
   POST /generate/story     → Story Muse (streaming SSE response)
   POST /generate/comfyui   → ComfyUI (async job, returns job_id)
@@ -21,19 +21,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.schemas import (
-    ImageDraftRequest,
-    ImageDraftResponse,
-    ImageAsset,
-    ImageRefineRequest,
-    ImageRefineResponse,
     VideoGenerateRequest,
     VideoGenerateResponse,
     StoryGenerateRequest,
     JobStatus,
 )
 from app.registry import (
-    get_image_draft_provider,
-    get_image_refine_provider,
     get_video_provider,
     get_llm_provider,
 )
@@ -66,89 +59,39 @@ router = APIRouter(prefix="/generate", tags=["Generation"])
 _jobs: dict[str, dict] = {}
 
 
-# ── Visual Muse — Step 1: Draft ───────────────────────────────────────────────
+# ── Visual Muse legacy endpoints (deprecated) ─────────────────────────────────
 
-@router.post("/draft", response_model=ImageDraftResponse)
-async def generate_image_draft(request: ImageDraftRequest):
-    """
-    Visual Muse Step 1: Generate draft keyframe(s) using Qwen Image Edit.
-    Accepts reference images + scene prompt. Returns 1–4 draft variations.
-    """
-    provider = get_image_draft_provider(request.provider_id)
+_LEGACY_IMAGE_GENERATION_DEPRECATION = (
+    "Legacy image draft/refine backend endpoints are removed. "
+    "Use MCP Extensions (/mcp-extensions) or ComfyUI generation routes."
+)
 
-    if not provider.is_available():
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": f"Provider '{provider.provider_id}' is not available.",
-                "reason": provider.unavailable_reason(),
-            },
-        )
 
-    params = {
-        "aspect_ratio": request.aspect_ratio,
-        "style_strength": request.style_strength,
-        "num_variations": request.num_variations,
-    }
-
-    result = await provider.generate(
-        prompt=request.prompt,
-        reference_image_paths=request.reference_image_paths,
-        params=params,
+@router.post("/draft")
+async def generate_image_draft() -> dict[str, str]:
+    _agent_log(
+        "legacy_generate_draft_called",
+        {"status": "deprecated"},
+        "api/routes/generate.py:generate_image_draft",
+        "LEGACY_IMAGE",
     )
-
-    if not result.success:
-        raise HTTPException(status_code=500, detail={"error": result.error})
-
-    return ImageDraftResponse(
-        scene_id=request.scene_id,
-        provider_id=provider.provider_id,
-        variations=[
-            ImageAsset(path=p, width=1920, height=1080)
-            for p in result.output_paths
-        ],
-        generation_params={**params, "prompt": request.prompt},
+    raise HTTPException(
+        status_code=410,
+        detail={"error": _LEGACY_IMAGE_GENERATION_DEPRECATION, "migration": "/mcp-extensions"},
     )
 
 
-# ── Visual Muse — Step 2: Refine ──────────────────────────────────────────────
-
-@router.post("/refine", response_model=ImageRefineResponse)
-async def refine_image(request: ImageRefineRequest):
-    """
-    Visual Muse Step 2: Refine draft keyframe via img2img (Z-Image Turbo).
-    Low denoise preserves Step 1 composition while enhancing quality.
-    """
-    provider = get_image_refine_provider(request.provider_id)
-
-    if not provider.is_available():
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": f"Provider '{provider.provider_id}' is not available.",
-                "reason": provider.unavailable_reason(),
-            },
-        )
-
-    params = {"denoise_strength": request.denoise_strength}
-    result = await provider.refine(
-        draft_image_path=request.draft_image_path,
-        prompt=request.prompt,
-        params=params,
+@router.post("/refine")
+async def refine_image() -> dict[str, str]:
+    _agent_log(
+        "legacy_generate_refine_called",
+        {"status": "deprecated"},
+        "api/routes/generate.py:refine_image",
+        "LEGACY_IMAGE",
     )
-
-    if not result.success:
-        raise HTTPException(status_code=500, detail={"error": result.error})
-
-    return ImageRefineResponse(
-        scene_id=request.scene_id,
-        provider_id=provider.provider_id,
-        final_image=ImageAsset(
-            path=result.output_paths[0],
-            width=1920,
-            height=1080,
-        ),
-        generation_params=params,
+    raise HTTPException(
+        status_code=410,
+        detail={"error": _LEGACY_IMAGE_GENERATION_DEPRECATION, "migration": "/mcp-extensions"},
     )
 
 

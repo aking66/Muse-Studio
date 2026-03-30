@@ -42,38 +42,6 @@ export interface ImageAsset {
   file_size_bytes?: number;
 }
 
-export interface ImageDraftRequest {
-  scene_id: string;
-  prompt: string;
-  reference_image_paths?: string[];
-  aspect_ratio?: string;
-  style_strength?: number;
-  provider_id?: string;
-  num_variations?: number;
-}
-
-export interface ImageDraftResponse {
-  scene_id: string;
-  provider_id: string;
-  variations: ImageAsset[];
-  generation_params: Record<string, unknown>;
-}
-
-export interface ImageRefineRequest {
-  scene_id: string;
-  draft_image_path: string;
-  prompt?: string;
-  denoise_strength?: number;
-  provider_id?: string;
-}
-
-export interface ImageRefineResponse {
-  scene_id: string;
-  provider_id: string;
-  final_image: ImageAsset;
-  generation_params: Record<string, unknown>;
-}
-
 export interface VideoGenerateRequest {
   scene_id: string;
   script: string;
@@ -179,26 +147,6 @@ export const backendClient = {
    */
   async providers(): Promise<ProvidersResponse> {
     return backendFetch<ProvidersResponse>('/providers');
-  },
-
-  /**
-   * Visual Muse Step 1: Generate draft keyframe(s).
-   */
-  async generateDraft(body: ImageDraftRequest): Promise<ImageDraftResponse> {
-    return backendFetch<ImageDraftResponse>('/generate/draft', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-
-  /**
-   * Visual Muse Step 2: Refine a draft keyframe (img2img).
-   */
-  async refineImage(body: ImageRefineRequest): Promise<ImageRefineResponse> {
-    return backendFetch<ImageRefineResponse>('/generate/refine', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
   },
 
   /**

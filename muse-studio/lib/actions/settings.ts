@@ -106,7 +106,7 @@ export async function getInferenceSettings(): Promise<InferenceSettings> {
   const all = await getAllSettings();
   return {
     fluxKleinOffload: (all['flux_klein_offload'] as FluxOffloadMode) ?? 'none',
-    videoDefault: all['video_default'] ?? 'ltx2',
+    videoDefault: all['video_default'] ?? 'wan2.2',
   };
 }
 

@@ -64,6 +64,12 @@ This README covers **installation, configuration, and day‑to‑day usage** of 
 
 ## 1. What's New
 
+### Release 1.5.2 (2026-03-31)
+
+- **MCP + plugin extension refresh** across frontend settings/pages and backend bridge wiring.
+- **Generation and provider flow updates** in draft/refine routes, Kanban/Playground dialogs, and provider adapter contracts.
+- **Backend/provider cleanup** with model-pipeline removals and registry/schema updates for a leaner runtime.
+
 ### Release 1.5.0 (2026-03-28)
 
 **Full release notes:** see [`CHANGELOG.md`](CHANGELOG.md) (copy into the [GitHub Releases](https://github.com/benjiyaya/Muse-Studio/releases) description for tag `v1.5.0`).
@@ -607,7 +613,7 @@ Expected response (example):
 ```json
 {
   "status": "ok",
-  "version": "1.5.0",
+  "version": "1.5.2",
   "available_providers": { ... }
 }
 ```
@@ -887,3 +893,4 @@ For remediation guidance, see [`SECURITY.md`](SECURITY.md).
 ## Changelog releases
 
 Version history and **detailed release notes** (features, codebase paths, docs) live in [`CHANGELOG.md`](CHANGELOG.md). For **v1.5.0**, open that file and paste the **[1.5.0]** section into the GitHub Release body for tag [`v1.5.0`](https://github.com/benjiyaya/Muse-Studio/releases/tag/v1.5.0) if you want the web UI to mirror the repo.
+

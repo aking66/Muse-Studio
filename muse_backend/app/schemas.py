@@ -53,8 +53,7 @@ class ProvidersResponse(BaseModel):
 
 class ImageDraftRequest(BaseModel):
     """
-    Step 1: Generate a draft keyframe using Qwen Image Edit (or configured provider).
-    Reference images establish visual style; prompt is derived from scene script.
+    Legacy endpoint schema. Draft/refine generation moved to MCP Extensions / ComfyUI.
     """
     scene_id: str
     prompt: str = Field(..., description="Scene description derived from script content")
@@ -73,8 +72,7 @@ class ImageDraftRequest(BaseModel):
 
 class ImageRefineRequest(BaseModel):
     """
-    Step 2: Refine a draft keyframe using Z-Image Turbo img2img (low denoise).
-    Preserves composition from Step 1 while enhancing quality.
+    Legacy endpoint schema. Draft/refine generation moved to MCP Extensions / ComfyUI.
     """
     scene_id: str
     draft_image_path: str = Field(..., description="Path to Step 1 draft image")
@@ -127,11 +125,11 @@ class VideoGenerateRequest(BaseModel):
     motion_strength: float = Field(default=0.7, ge=0.0, le=1.0)
     provider_id: Optional[str] = Field(
         default=None,
-        description="e.g. 'wan2.2', 'ltx2', 'kling', 'seeddance', 'runway'"
+        description="e.g. 'wan2.2', 'kling', 'seeddance', 'runway'"
     )
     aspect_ratio: Optional[str] = Field(
         default=None,
-        description="For LTX2 only: '16:9' (1280×720) or '9:16' (720×1280). Ignored by other providers."
+        description="Optional provider-specific aspect ratio hint."
     )
 
 
@@ -264,7 +262,7 @@ class AgentRevisionRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.5.0"
+    version: str = "1.5.2"
     models_path: str
     models_path_exists: bool
     available_providers: dict[str, list[str]]
