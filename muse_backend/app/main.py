@@ -2,7 +2,7 @@
 Muse Backend — FastAPI Application Entry Point
 
 Run with:
-    uvicorn app.main:app --reload --port 8000
+    uvicorn app.main:app --reload --port 4501
 
 Or use the start script:
     python run.py
@@ -37,8 +37,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",   # Next.js dev server
-        "http://127.0.0.1:3000",
+        "http://localhost:4500",   # Next.js dev server (port 4500 to avoid conflicts)
+        "http://127.0.0.1:4500",
         # Add production domain here when deploying
     ],
     allow_credentials=True,

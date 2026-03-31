@@ -10,7 +10,7 @@ echo "[1/2] Starting Python Backend..."
 gnome-terminal --title="Muse Backend" -- bash -c "
     cd muse_backend || exit
     source .venv/bin/activate || exit
-    uvicorn app.main:app --reload --port 8000
+    uvicorn app.main:app --reload --port 4501
     exec bash
 " &
 
@@ -28,8 +28,8 @@ gnome-terminal --title="Muse Studio" -- bash -c "
 echo ""
 echo "========================================"
 echo "  Both servers starting..."
-echo "  Backend: http://localhost:8000"
-echo "  Frontend: http://localhost:3000"
+echo "  Backend: http://localhost:4501"
+echo "  Frontend: http://localhost:4500"
 echo "========================================"
 echo ""
 echo "Press Ctrl+C to stop monitoring..."

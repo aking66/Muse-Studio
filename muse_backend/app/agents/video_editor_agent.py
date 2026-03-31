@@ -521,7 +521,7 @@ def smart_edit_remotion_and_render(state: VideoEditorState) -> dict:
         if callable(cb):
             cb(
                 "Rendering polished cut with Remotion (may take several minutes). "
-                "Ensure Muse Studio is reachable (MUSE_VIDEO_HTTP_BASE, default http://127.0.0.1:3000) so video assets load."
+                "Ensure Muse Studio is reachable (MUSE_VIDEO_HTTP_BASE, default http://127.0.0.1:4500) so video assets load."
             )
         out_rel = run_remotion_render_safe(project_id, timeline)
     except Exception as exc:  # noqa: BLE001

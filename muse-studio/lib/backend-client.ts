@@ -3,10 +3,11 @@
  * Used exclusively from Next.js API route handlers (never called from the browser directly).
  *
  * The Python backend URL is read from the MUSE_BACKEND_URL environment variable,
- * defaulting to http://localhost:8000 for local development.
+ * defaulting to http://localhost:4501 for local development.
  */
 
-const BACKEND_URL = process.env.MUSE_BACKEND_URL ?? 'http://localhost:8000';
+// Muse Studio backend port: 4501 (avoids conflicts with other projects)
+const BACKEND_URL = process.env.MUSE_BACKEND_URL ?? 'http://localhost:4501';
 
 // ── Request / Response types (mirror Python schemas.py) ──────────────────────
 

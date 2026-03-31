@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND = process.env.MUSE_BACKEND_URL ?? 'http://localhost:8000';
+// Muse Studio backend port: 4501 (avoids conflicts with other projects)
+const BACKEND = process.env.MUSE_BACKEND_URL ?? 'http://localhost:4501';
 
 /**
  * GET: Return current LLM provider config from backend (muse_config.json + env).
