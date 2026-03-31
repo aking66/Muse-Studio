@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { db } from '@/db';
 import type {
   Character,
@@ -192,6 +193,7 @@ export async function createCharacter(input: CreateCharacterInput): Promise<Char
     .get(id);
 
   if (!row) throw new Error('Character not found after create');
+  revalidatePath(`/projects/${input.projectId}/characters`);
   return mapCharacter(row, []);
 }
 
@@ -246,10 +248,15 @@ export async function updateCharacter(id: string, data: UpdateCharacterInput): P
   values.push(id);
 
   db.prepare(`UPDATE characters SET ${fields.join(', ')} WHERE id = ?`).run(...(values as never[]));
+
+  const row = db.prepare<[string], CharacterRow>('SELECT project_id FROM characters WHERE id = ?').get(id);
+  if (row) revalidatePath(`/projects/${row.project_id}/characters`);
 }
 
 export async function deleteCharacter(id: string): Promise<void> {
+  const row = db.prepare<[string], CharacterRow>('SELECT project_id FROM characters WHERE id = ?').get(id);
   db.prepare('DELETE FROM characters WHERE id = ?').run(id);
+  if (row) revalidatePath(`/projects/${row.project_id}/characters`);
 }
 
 interface AddCharacterImageInput {
@@ -288,10 +295,21 @@ export async function addCharacterImage(input: AddCharacterImageInput): Promise<
     .get(id);
 
   if (!row) throw new Error('Character image not found after create');
+
+  // Revalidate so the server page reflects the new image
+  const charRow = db.prepare<[string], CharacterRow>('SELECT project_id FROM characters WHERE id = ?').get(input.characterId);
+  if (charRow) revalidatePath(`/projects/${charRow.project_id}/characters`);
+
   return mapImageRow(row);
 }
 
 export async function deleteCharacterImage(id: string): Promise<void> {
+  const imgRow = db.prepare<[string], CharacterImageRow>('SELECT character_id FROM character_images WHERE id = ?').get(id);
   db.prepare('DELETE FROM character_images WHERE id = ?').run(id);
+
+  if (imgRow) {
+    const charRow = db.prepare<[string], CharacterRow>('SELECT project_id FROM characters WHERE id = ?').get(imgRow.character_id);
+    if (charRow) revalidatePath(`/projects/${charRow.project_id}/characters`);
+  }
 }
 
