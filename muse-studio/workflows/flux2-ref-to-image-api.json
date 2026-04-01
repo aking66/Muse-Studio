@@ -1,0 +1,217 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux2_dev_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Flux 2 UNET"
+    }
+  },
+  "2": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "mistral_3_small_flux2_bf16.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    },
+    "_meta": {
+      "title": "Flux 2 CLIP"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "Flux 2 VAE"
+    }
+  },
+  "4": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "sketch_last.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "Sketch (Input)"
+    }
+  },
+  "5": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "first_frame_ref.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "Style Reference Image (Input)"
+    }
+  },
+  "6": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["4", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    },
+    "_meta": {
+      "title": "Scale Sketch"
+    }
+  },
+  "7": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["5", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    },
+    "_meta": {
+      "title": "Scale Reference"
+    }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "2D animated character, flat colors, clean line art, smooth cel shading, consistent thick black outlines, vibrant background, same art style as reference",
+      "clip": ["2", 0]
+    },
+    "_meta": {
+      "title": "Prompt (Input)"
+    }
+  },
+  "9": {
+    "class_type": "FluxGuidance",
+    "inputs": {
+      "conditioning": ["8", 0],
+      "guidance": 5.5
+    },
+    "_meta": {
+      "title": "Guidance Scale"
+    }
+  },
+  "10": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["6", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "Encode Sketch"
+    }
+  },
+  "11": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["7", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "Encode Reference"
+    }
+  },
+  "12": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": ["9", 0],
+      "latent": ["10", 0]
+    },
+    "_meta": {
+      "title": "Sketch as Composition Ref"
+    }
+  },
+  "13": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": ["12", 0],
+      "latent": ["11", 0]
+    },
+    "_meta": {
+      "title": "First Frame as Style Ref"
+    }
+  },
+  "14": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["1", 0],
+      "conditioning": ["13", 0]
+    },
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "15": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Random Noise"
+    }
+  },
+  "16": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "17": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 28,
+      "width": 832,
+      "height": 480
+    },
+    "_meta": {
+      "title": "Scheduler"
+    }
+  },
+  "18": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Output Size"
+    }
+  },
+  "19": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["15", 0],
+      "guider": ["14", 0],
+      "sampler": ["16", 0],
+      "sigmas": ["17", 0],
+      "latent_image": ["18", 0]
+    },
+    "_meta": {
+      "title": "Sampler Advanced"
+    }
+  },
+  "20": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["19", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "21": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "Flux2_RefToImage",
+      "images": ["20", 0]
+    },
+    "_meta": {
+      "title": "Generated Image (Output)"
+    }
+  }
+}

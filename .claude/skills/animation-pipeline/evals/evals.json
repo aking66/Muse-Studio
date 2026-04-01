@@ -1,0 +1,162 @@
+{
+  "skill_name": "animation-pipeline",
+  "note": "Dry-run evals — no actual ComfyUI generation. Test skill logic only.",
+  "evals": [
+    {
+      "id": 1,
+      "name": "project-discovery",
+      "prompt": "animation pipeline — شغّل الـ pipeline للمشروع 2D Animation Pipeline Test",
+      "expected_output": "Skill reads SQLite, finds project 'proj-mndjag4e-t7urc', lists character Kito with prompt_positive, lists 3 shots, shows pipeline summary, asks which shot to start",
+      "assertions": [
+        {
+          "text": "Reads character 'Kito' from database with correct prompt_positive",
+          "type": "content_check"
+        },
+        {
+          "text": "Lists all 3 shots (Discovery, The Clearing, Illumination)",
+          "type": "content_check"
+        },
+        {
+          "text": "Shows pipeline summary with 7 stages before starting",
+          "type": "content_check"
+        },
+        {
+          "text": "Asks user which shot to start with or whether to run all",
+          "type": "interaction_check"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "stage-1a-prompt-proposal",
+      "prompt": "animation pipeline — ابدأ Stage 1A لشخصية Kito بمشروع 2D Animation Pipeline Test. بس اعرضلي الـ prompt ولا ترسل لـ ComfyUI",
+      "expected_output": "Skill proposes a character sketch prompt using Kito's description (orange fox, blue scarf, etc.), uses the correct template format, waits for approval",
+      "assertions": [
+        {
+          "text": "Prompt contains character description from DB (orange fox, blue scarf, curious eyes, fluffy tail)",
+          "type": "content_check"
+        },
+        {
+          "text": "Prompt follows Stage 1A template: includes 'character sketch', 'rough line art', 'front view', 'pencil sketch style', 'white background'",
+          "type": "template_check"
+        },
+        {
+          "text": "Shows which workflow file will be used (flux2-sketch-to-image-api.json)",
+          "type": "content_check"
+        },
+        {
+          "text": "Waits for user approval before proceeding — does NOT send to API",
+          "type": "interaction_check"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "stage-1a-workflow-patch",
+      "prompt": "animation pipeline — جهّز الـ workflow JSON لـ Stage 1A بالبرومبت: 'character sketch, rough line art, small orange fox with blue scarf, big curious eyes, fluffy tail with white tip, front view, 3/4 view, side view, pencil sketch style, white background'. وريني الـ JSON المعدّل بدون ما ترسله",
+      "expected_output": "Reads flux2-sketch-to-image-api.json, patches node 6 (Prompt Input) with the given text, shows the patched JSON, shows the curl command that would be sent",
+      "assertions": [
+        {
+          "text": "Reads correct workflow file: flux2-sketch-to-image-api.json",
+          "type": "file_check"
+        },
+        {
+          "text": "Patches node '6' inputs.text with the prompt string",
+          "type": "json_check"
+        },
+        {
+          "text": "Does NOT modify other nodes (UNET, CLIP, VAE, Sampler settings)",
+          "type": "json_check"
+        },
+        {
+          "text": "Shows the API call that would be made (POST /generate/comfyui with scene_id, kind=image, workflow)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "stage-3-input-chaining",
+      "prompt": "animation pipeline — وريني شو الـ inputs لـ Stage 3 (Last Frame Sketch) لو الـ outputs السابقة هي: character_sketch.png في drafts/Flux2_SketchToImage_00001.png و first_frame_sketch.png في drafts/Flux2_RefToImage_00003.png. بدون إرسال",
+      "expected_output": "Shows Stage 3 uses flux2-ref-to-image-api.json, patches node 4 (Sketch) with character_sketch path, patches node 5 (Style Ref) with first_frame_sketch path, proposes scene prompt for ending pose",
+      "assertions": [
+        {
+          "text": "Uses flux2-ref-to-image-api.json workflow",
+          "type": "content_check"
+        },
+        {
+          "text": "Node 4 (Sketch Input) gets character_sketch path: drafts/Flux2_SketchToImage_00001.png",
+          "type": "json_check"
+        },
+        {
+          "text": "Node 5 (Style Reference) gets first_frame_sketch path: drafts/Flux2_RefToImage_00003.png",
+          "type": "json_check"
+        },
+        {
+          "text": "Prompt describes ENDING pose (different from first frame)",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "stage-5-video-setup",
+      "prompt": "animation pipeline — جهّز Stage 5 (Video Generation) بالصور: first_frame_final.png في drafts/Flux2_Scene_00005.png و last_frame_final.png في drafts/Flux2_Scene_00006.png. Shot 1: Discovery — Kito walks through forest. وريني الـ JSON بدون إرسال",
+      "expected_output": "Uses wan22-flf2v-api.json, patches nodes 10 (first frame), 11 (last frame), 12 (positive prompt), 13 (negative prompt), kind=video",
+      "assertions": [
+        {
+          "text": "Uses wan22-flf2v-api.json workflow",
+          "type": "content_check"
+        },
+        {
+          "text": "Node 10 gets first_frame_final path",
+          "type": "json_check"
+        },
+        {
+          "text": "Node 11 gets last_frame_final path",
+          "type": "json_check"
+        },
+        {
+          "text": "Node 12 (positive) includes '2D animated', 'smooth motion', 'cel shading'",
+          "type": "content_check"
+        },
+        {
+          "text": "Node 13 (negative) includes '3D render', 'realistic', 'blurry', 'morphing'",
+          "type": "content_check"
+        },
+        {
+          "text": "API call uses kind='video' not 'image'",
+          "type": "content_check"
+        },
+        {
+          "text": "Does NOT change CFG (stays 1.0), resolution (832x480), or frames (81)",
+          "type": "json_check"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "runpod-pre-check",
+      "prompt": "animation pipeline — بدي أشغّل الـ pipeline بس أولاً شيك إذا RunPod جاهز",
+      "expected_output": "Checks RunPod API for running pods, reports pod status, checks if ComfyUI is reachable, verifies backend COMFYUI_BASE_URL",
+      "assertions": [
+        {
+          "text": "Queries RunPod GraphQL API for pod status",
+          "type": "action_check"
+        },
+        {
+          "text": "Reports pod status (running/exited) clearly",
+          "type": "content_check"
+        },
+        {
+          "text": "If pod not running, suggests using /runpod skill or pod_retry.sh to start one",
+          "type": "content_check"
+        },
+        {
+          "text": "Checks backend is running and COMFYUI_BASE_URL is correct",
+          "type": "action_check"
+        }
+      ]
+    }
+  ]
+}

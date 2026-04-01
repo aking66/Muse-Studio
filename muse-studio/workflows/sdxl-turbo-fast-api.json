@@ -1,0 +1,81 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+    },
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "a quick sketch of a futuristic city, concept art style",
+      "clip": ["1", 1]
+    },
+    "_meta": {
+      "title": "Prompt (Input)"
+    }
+  },
+  "3": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Image Size"
+    }
+  },
+  "4": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 42,
+      "control_after_generate": "fixed",
+      "steps": 1,
+      "cfg": 1.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["1", 0],
+      "positive": ["2", 0],
+      "negative": ["6", 0],
+      "latent_image": ["3", 0]
+    },
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "5": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["4", 0],
+      "vae": ["1", 2]
+    },
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "sdxl_turbo",
+      "images": ["5", 0]
+    },
+    "_meta": {
+      "title": "Save Image (Output)"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["1", 1]
+    },
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  }
+}

@@ -1,0 +1,264 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux2_dev_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Flux 2 UNET"
+    }
+  },
+  "2": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "mistral_3_small_flux2_bf16.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    },
+    "_meta": {
+      "title": "Flux 2 CLIP"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "Flux 2 VAE"
+    }
+  },
+
+  "10": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "scene_sketch.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "Scene Sketch (Input)"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "character_2d.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "Character Reference (Input)"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "location_ref.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "Location Reference (Input)"
+    }
+  },
+
+  "20": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["10", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    },
+    "_meta": {
+      "title": "Scale Sketch"
+    }
+  },
+  "21": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["11", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    },
+    "_meta": {
+      "title": "Scale Character"
+    }
+  },
+  "22": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["12", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    },
+    "_meta": {
+      "title": "Scale Location"
+    }
+  },
+
+  "30": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "2D animated scene, [character] [action/pose], [background from location], flat colors, clean line art, smooth cel shading, consistent thick black outlines, vibrant colors",
+      "clip": ["2", 0]
+    },
+    "_meta": {
+      "title": "Scene Prompt (Input)"
+    }
+  },
+  "31": {
+    "class_type": "FluxGuidance",
+    "inputs": {
+      "conditioning": ["30", 0],
+      "guidance": 5.5
+    },
+    "_meta": {
+      "title": "Guidance Scale"
+    }
+  },
+
+  "40": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["20", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "Encode Sketch"
+    }
+  },
+  "41": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["21", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "Encode Character"
+    }
+  },
+  "42": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["22", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "Encode Location"
+    }
+  },
+
+  "50": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": ["31", 0],
+      "latent": ["40", 0]
+    },
+    "_meta": {
+      "title": "Ref 1: Sketch (Composition)"
+    }
+  },
+  "51": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": ["50", 0],
+      "latent": ["41", 0]
+    },
+    "_meta": {
+      "title": "Ref 2: Character (Identity)"
+    }
+  },
+  "52": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": ["51", 0],
+      "latent": ["42", 0]
+    },
+    "_meta": {
+      "title": "Ref 3: Location (Background)"
+    }
+  },
+
+  "60": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["1", 0],
+      "conditioning": ["52", 0]
+    },
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "61": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Random Noise"
+    }
+  },
+  "62": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "63": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 28,
+      "width": 832,
+      "height": 480
+    },
+    "_meta": {
+      "title": "Scheduler"
+    }
+  },
+  "64": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Output Size (832x480)"
+    }
+  },
+  "65": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["61", 0],
+      "guider": ["60", 0],
+      "sampler": ["62", 0],
+      "sigmas": ["63", 0],
+      "latent_image": ["64", 0]
+    },
+    "_meta": {
+      "title": "Generate Frame"
+    }
+  },
+  "66": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["65", 0],
+      "vae": ["3", 0]
+    },
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "67": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "Flux2_Scene",
+      "images": ["66", 0]
+    },
+    "_meta": {
+      "title": "Final Frame (Output)"
+    }
+  }
+}
