@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
+import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check,
@@ -466,7 +466,7 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
   return (
     <div
       className={cn(
-        'w-[300px] rounded-xl transition-all duration-300',
+        'min-w-[240px] w-full h-full rounded-xl transition-all duration-300',
         isGenerating && 'pipeline-generating-border',
         !isGenerating && 'pipeline-glass',
         !isGenerating && STATUS_BORDER[status],
@@ -476,6 +476,15 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
       )}
       onClick={onSelect}
     >
+      {/* Resize handle — visible on select */}
+      <NodeResizer
+        isVisible={selected && !isLocked}
+        minWidth={240}
+        minHeight={120}
+        lineClassName="!border-muse-purple/30"
+        handleClassName="!w-2 !h-2 !bg-muse-purple !border-muse-purple/50 !rounded-sm"
+      />
+
       {/* Inner wrapper for generating border clip */}
       <div
         className={cn(
