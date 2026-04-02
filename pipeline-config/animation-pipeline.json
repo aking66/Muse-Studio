@@ -237,7 +237,12 @@
       },
       "output": "character_2d.png",
       "output_used_by": ["4A", "4B"],
-      "critical_lesson": "Using character_sketch.png as ReferenceLatent input makes output look like sketch. Use blank.png and control style entirely via prompt.",
+      "critical_lesson": "Using character_sketch as ReferenceLatent copies sketch style. Use blank.png for Stage 1B. But for Stages 2-4B, USE character_2d.png as ReferenceLatent — it provides style+identity anchoring via Flux 2 multi-reference conditioning. Combined with PuLID = double identity lock.",
+      "output_used_by_detail": {
+        "4A_4B_character_ref": "ReferenceLatent node for character identity",
+        "2_3_4A_4B_ref_latent": "ReferenceLatent node 4 for style+body consistency",
+        "2_3_4A_4B_pulid": "PuLID node 103 for face identity lock"
+      },
       "performance": {
         "first_run_sec": 60,
         "cached_sec": 35,
@@ -246,20 +251,20 @@
     },
     {
       "id": "2",
-      "name": "First Frame Sketch",
-      "purpose": "Sketch the opening scene composition",
+      "name": "First Frame",
+      "purpose": "Generate the opening scene frame with character identity locked",
       "workflow": "muse-studio/workflows/flux2-ref-to-image-api.json",
       "model": "flux2",
       "kind": "image",
-      "style_applied": false,
-      "prompt_template": "scene sketch, rough line art, {character.name} {shot.first_frame_action} in {shot.location}, {shot.camera_angle}, pencil sketch style, composition reference, clear proportions",
+      "style_applied": true,
+      "prompt_template": "{character.name} {shot.first_frame_action} in {shot.location}, {shot.camera_angle}, {style.keywords}",
       "inputs": {
-        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
-        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "4": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Character reference (ReferenceLatent)", "note": "character_2d.png as style+identity reference via multi-ref conditioning"},
+        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "role": "Style reference", "note": "No additional style ref needed — character_2d provides style"},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
-        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "Double lock: ReferenceLatent (body+style) + PuLID (face)"}
       },
       "output": "first_frame_sketch.png",
       "output_used_by": ["3", "4A"],
@@ -267,20 +272,20 @@
     },
     {
       "id": "3",
-      "name": "Last Frame Sketch",
-      "purpose": "Sketch the ending scene — small pose change from first frame",
+      "name": "Last Frame",
+      "purpose": "Generate the ending scene frame — small pose change from first frame",
       "workflow": "muse-studio/workflows/flux2-ref-to-image-api.json",
       "model": "flux2",
       "kind": "image",
-      "style_applied": false,
-      "prompt_template": "scene sketch, rough line art, {character.name} {shot.last_frame_action} in {shot.location}, {shot.camera_angle}, pencil sketch style, same background as reference",
+      "style_applied": true,
+      "prompt_template": "{character.name} {shot.last_frame_action} in {shot.location}, {shot.camera_angle}, {style.keywords}, same background composition as first frame",
       "inputs": {
-        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
-        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "4": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Character reference (ReferenceLatent)", "note": "character_2d.png as identity anchor"},
+        "5": {"field": "inputs.image", "value": "{stages.2.output}", "source": "stage_output", "role": "First frame as style/scene reference", "note": "Ensures background continuity with first frame"},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
-        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "Double lock: ReferenceLatent (body+style) + PuLID (face)"}
       },
       "output": "last_frame_sketch.png",
       "output_used_by": ["4B"],
