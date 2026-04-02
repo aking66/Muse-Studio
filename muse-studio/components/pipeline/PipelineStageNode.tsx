@@ -14,6 +14,11 @@ import {
   ImageIcon,
   Film,
   User,
+  Pencil,
+  UserCircle,
+  Frame,
+  Wand2,
+  Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -133,6 +138,67 @@ export type PipelineStageNodeType = Node<PipelineStageNodeData, 'pipelineStage'>
 // ---------------------------------------------------------------------------
 // Status-dependent visual mappings
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Node type visual identity — icon, color, accent per stage
+// ---------------------------------------------------------------------------
+const NODE_TYPE_CONFIG: Record<string, {
+  icon: React.ComponentType<{ className?: string }>;
+  accentColor: string;
+  accentBg: string;
+  accentBorder: string;
+  category: string;
+}> = {
+  '1A': {
+    icon: Pencil,
+    accentColor: 'text-gray-400',
+    accentBg: 'bg-gray-500/10',
+    accentBorder: 'border-gray-500/20',
+    category: 'Sketch',
+  },
+  '1B': {
+    icon: UserCircle,
+    accentColor: 'text-violet-400',
+    accentBg: 'bg-violet-500/10',
+    accentBorder: 'border-violet-500/20',
+    category: 'Character',
+  },
+  '2': {
+    icon: Frame,
+    accentColor: 'text-blue-400',
+    accentBg: 'bg-blue-500/10',
+    accentBorder: 'border-blue-500/20',
+    category: 'Frame',
+  },
+  '3': {
+    icon: Frame,
+    accentColor: 'text-blue-400',
+    accentBg: 'bg-blue-500/10',
+    accentBorder: 'border-blue-500/20',
+    category: 'Frame',
+  },
+  '4A': {
+    icon: Wand2,
+    accentColor: 'text-amber-400',
+    accentBg: 'bg-amber-500/10',
+    accentBorder: 'border-amber-500/20',
+    category: 'Final',
+  },
+  '4B': {
+    icon: Wand2,
+    accentColor: 'text-amber-400',
+    accentBg: 'bg-amber-500/10',
+    accentBorder: 'border-amber-500/20',
+    category: 'Final',
+  },
+  '5': {
+    icon: Clapperboard,
+    accentColor: 'text-emerald-400',
+    accentBg: 'bg-emerald-500/10',
+    accentBorder: 'border-emerald-500/20',
+    category: 'Video',
+  },
+};
+
 const STATUS_GLOW: Record<PipelineStageStatus, string> = {
   locked:     '',
   active:     'pipeline-glow-purple',
@@ -466,15 +532,24 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
         {/* Header                                                             */}
         {/* ----------------------------------------------------------------- */}
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/5">
-          {/* Stage ID badge */}
-          <span
-            className={cn(
-              'text-[10px] font-bold font-mono px-2 py-0.5 rounded-md shrink-0',
-              STATUS_BADGE[status],
-            )}
-          >
-            {stageId}
-          </span>
+          {/* Node type icon + ID badge */}
+          {(() => {
+            const nodeType = NODE_TYPE_CONFIG[stageId];
+            const Icon = nodeType?.icon || ImageIcon;
+            return (
+              <div className={cn(
+                'flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0',
+                nodeType?.accentBg || 'bg-white/5',
+                nodeType?.accentBorder || 'border-white/10',
+                'border',
+              )}>
+                <Icon className={cn('size-3', nodeType?.accentColor || 'text-white/50')} />
+                <span className={cn('text-[10px] font-bold font-mono', nodeType?.accentColor || 'text-white/50')}>
+                  {stageId}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Stage name */}
           <span
