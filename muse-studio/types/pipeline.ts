@@ -4,6 +4,16 @@ export type PipelineStageStatus = 'locked' | 'active' | 'generating' | 'review' 
 // Stage kind
 export type StageKind = 'image' | 'video';
 
+// Handle type for named inputs/outputs on pipeline nodes (ComfyUI-style)
+export type StageHandleDataType = 'image' | 'text' | 'video';
+
+export interface StageHandle {
+  id: string;                    // e.g. "scene_sketch", "prompt", "identity"
+  label: string;                 // Display name: "Scene Sketch", "Prompt", "PuLID ID"
+  type: StageHandleDataType;     // Data type flowing through the handle
+  position: 'input' | 'output';
+}
+
 // Style preset from pipeline config
 export interface StylePreset {
   id: string;

@@ -18,7 +18,7 @@ import { PipelineProvider, usePipeline } from './PipelineContext';
 import { PipelineStageNode, type PipelineStageNodeData } from './PipelineStageNode';
 import { PipelineOpsPanel } from './PipelineOpsPanel';
 import StyleSelector from './StyleSelector';
-import type { PipelineState, PipelineStageStatus } from '@/types/pipeline';
+import type { PipelineState, PipelineStageStatus, StageHandle } from '@/types/pipeline';
 
 // ---------------------------------------------------------------------------
 // Custom node type registry
@@ -26,38 +26,156 @@ import type { PipelineState, PipelineStageStatus } from '@/types/pipeline';
 const nodeTypes = { pipelineStage: PipelineStageNode };
 
 // ---------------------------------------------------------------------------
-// DAG node positions
+// Handle definitions per stage — named inputs and outputs
 // ---------------------------------------------------------------------------
-const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
-  '1A': { x: 0,    y: 250 },
-  '1B': { x: 350,  y: 250 },
-  '2':  { x: 350,  y: 50  },
-  '3':  { x: 350,  y: 450 },
-  '4A': { x: 700,  y: 50  },
-  '4B': { x: 700,  y: 450 },
-  '5':  { x: 1050, y: 250 },
+const STAGE_HANDLES: Record<string, { inputs: StageHandle[]; outputs: StageHandle[] }> = {
+  '1A': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'character_sketch', label: 'Character Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '1B': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'character_2d', label: 'Character 2D', type: 'image', position: 'output' },
+    ],
+  },
+  '2': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'first_frame_sketch', label: 'First Frame Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '3': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
+      { id: 'style_ref', label: 'Style Ref', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'last_frame_sketch', label: 'Last Frame Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '4A': {
+    inputs: [
+      { id: 'scene_sketch', label: 'Scene Sketch', type: 'image', position: 'input' },
+      { id: 'character_ref', label: 'Character Ref', type: 'image', position: 'input' },
+      { id: 'location_ref', label: 'Location Ref', type: 'image', position: 'input' },
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'first_frame_final', label: 'First Frame', type: 'image', position: 'output' },
+    ],
+  },
+  '4B': {
+    inputs: [
+      { id: 'scene_sketch', label: 'Scene Sketch', type: 'image', position: 'input' },
+      { id: 'character_ref', label: 'Character Ref', type: 'image', position: 'input' },
+      { id: 'location_ref', label: 'Location Ref', type: 'image', position: 'input' },
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'last_frame_final', label: 'Last Frame', type: 'image', position: 'output' },
+    ],
+  },
+  '5': {
+    inputs: [
+      { id: 'first_frame', label: 'First Frame', type: 'image', position: 'input' },
+      { id: 'last_frame', label: 'Last Frame', type: 'image', position: 'input' },
+      { id: 'positive_prompt', label: 'Positive Prompt', type: 'text', position: 'input' },
+      { id: 'negative_prompt', label: 'Negative Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'video', label: 'Video', type: 'video', position: 'output' },
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
-// Edge definitions — mirrors pipeline config output_used_by
+// DAG node positions — adjusted for taller nodes with multiple handles
 // ---------------------------------------------------------------------------
-const EDGE_DEFS: { id: string; source: string; target: string; label?: string }[] = [
-  { id: 'e-1A-1B', source: '1A', target: '1B', label: 'sketch ref' },
-  { id: 'e-1A-2',  source: '1A', target: '2',  label: 'sketch ref' },
-  { id: 'e-1A-3',  source: '1A', target: '3',  label: 'sketch ref' },
-  { id: 'e-1B-4A', source: '1B', target: '4A', label: 'character ref' },
-  { id: 'e-1B-4B', source: '1B', target: '4B', label: 'character ref' },
-  { id: 'e-2-3',   source: '2',  target: '3',  label: 'style ref' },
-  { id: 'e-2-4A',  source: '2',  target: '4A', label: 'scene sketch' },
-  { id: 'e-3-4B',  source: '3',  target: '4B', label: 'scene sketch' },
-  { id: 'e-4A-5',  source: '4A', target: '5',  label: 'first frame' },
-  { id: 'e-4B-5',  source: '4B', target: '5',  label: 'last frame' },
+const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
+  '1A': { x: 0,    y: 200 },
+  '1B': { x: 400,  y: 200 },
+  '2':  { x: 400,  y: 0   },
+  '3':  { x: 400,  y: 450 },
+  '4A': { x: 800,  y: 0   },
+  '4B': { x: 800,  y: 450 },
+  '5':  { x: 1200, y: 200 },
+};
+
+// ---------------------------------------------------------------------------
+// Edge definitions — handle-to-handle connections
+// ---------------------------------------------------------------------------
+const EDGE_DEFS: {
+  id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+  label?: string;
+}[] = [
+  // 1A outputs
+  { id: 'e-1A-1B-sketch', source: '1A', sourceHandle: '1A-character_sketch', target: '1B', targetHandle: '1B-prompt', label: 'sketch ref' },
+
+  // 1B character_2d goes to 4A and 4B as character_ref
+  { id: 'e-1B-4A-char', source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-character_ref', label: 'character ref' },
+  { id: 'e-1B-4B-char', source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-character_ref', label: 'character ref' },
+
+  // 1B character_2d goes to 2, 3, 4A, 4B as PuLID identity
+  { id: 'e-1B-2-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '2',  targetHandle: '2-identity',  label: 'PuLID ID' },
+  { id: 'e-1B-3-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '3',  targetHandle: '3-identity',  label: 'PuLID ID' },
+  { id: 'e-1B-4A-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-identity', label: 'PuLID ID' },
+  { id: 'e-1B-4B-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-identity', label: 'PuLID ID' },
+
+  // 2 first_frame_sketch
+  { id: 'e-2-3-style',   source: '2', sourceHandle: '2-first_frame_sketch', target: '3',  targetHandle: '3-style_ref',    label: 'style ref' },
+  { id: 'e-2-4A-scene',  source: '2', sourceHandle: '2-first_frame_sketch', target: '4A', targetHandle: '4A-scene_sketch', label: 'scene sketch' },
+
+  // 3 last_frame_sketch
+  { id: 'e-3-4B-scene', source: '3', sourceHandle: '3-last_frame_sketch', target: '4B', targetHandle: '4B-scene_sketch', label: 'scene sketch' },
+
+  // 4A, 4B to 5
+  { id: 'e-4A-5-first', source: '4A', sourceHandle: '4A-first_frame_final', target: '5', targetHandle: '5-first_frame', label: 'first frame' },
+  { id: 'e-4B-5-last',  source: '4B', sourceHandle: '4B-last_frame_final',  target: '5', targetHandle: '5-last_frame',  label: 'last frame' },
 ];
 
 // ---------------------------------------------------------------------------
-// Edge color based on source+target status
+// Edge color by data type
 // ---------------------------------------------------------------------------
-function getEdgeColor(sourceStatus: PipelineStageStatus, targetStatus: PipelineStageStatus): string {
+const EDGE_TYPE_COLORS: Record<string, string> = {
+  image: 'oklch(0.606 0.259 290.79)',  // purple
+  text:  'oklch(0.769 0.188 70.08)',    // gold
+  video: 'oklch(0.696 0.17 162.48)',    // emerald
+  pulid: 'oklch(0.55 0.2 290)',         // violet (PuLID specific)
+};
+
+function getEdgeDataType(label?: string): string {
+  if (!label) return 'image';
+  if (label.includes('PuLID')) return 'pulid';
+  if (label.includes('prompt') || label.includes('Prompt')) return 'text';
+  if (label.includes('video') || label.includes('Video')) return 'video';
+  return 'image';
+}
+
+// ---------------------------------------------------------------------------
+// Edge color based on source+target status (dim override when inactive)
+// ---------------------------------------------------------------------------
+function getEdgeColor(
+  sourceStatus: PipelineStageStatus,
+  targetStatus: PipelineStageStatus,
+  dataType: string,
+): string {
   if (sourceStatus === 'approved' && targetStatus === 'approved') {
     return 'oklch(0.696 0.17 162.48)'; // emerald — completed path
   }
@@ -65,7 +183,7 @@ function getEdgeColor(sourceStatus: PipelineStageStatus, targetStatus: PipelineS
     sourceStatus === 'approved' &&
     (targetStatus === 'active' || targetStatus === 'generating' || targetStatus === 'review')
   ) {
-    return 'oklch(0.606 0.259 290.79)'; // purple — active path
+    return EDGE_TYPE_COLORS[dataType] ?? EDGE_TYPE_COLORS.image;
   }
   return 'oklch(0.25 0.01 264)'; // dim
 }
@@ -101,10 +219,14 @@ function buildNodes(
         name: stage.name,
         status: stage.status,
         kind: stage.kind,
+        inputs: STAGE_HANDLES[id]?.inputs ?? [],
+        outputs: STAGE_HANDLES[id]?.outputs ?? [],
         outputPath: stage.outputPath,
         prompt: stage.prompt,
         styleApplied: stage.styleApplied,
         pulidEnabled: PULID_STAGES.has(id),
+        cost: stage.cost,
+        durationSec: stage.durationSec,
         onGenerate: () => onMockGenerate(id),
         onApprove: () => dispatch({ type: 'APPROVE_STAGE', stageId: id }),
         onRetry: () => dispatch({ type: 'RETRY_STAGE', stageId: id }),
@@ -121,20 +243,28 @@ function buildEdges(state: PipelineState): Edge[] {
   return EDGE_DEFS.map((def) => {
     const sourceStatus = state.stages[def.source]?.status ?? 'locked';
     const targetStatus = state.stages[def.target]?.status ?? 'locked';
-    const color = getEdgeColor(sourceStatus, targetStatus);
+    const dataType = getEdgeDataType(def.label);
+    const color = getEdgeColor(sourceStatus, targetStatus, dataType);
     const animated = isEdgeAnimated(sourceStatus, targetStatus);
+    const isPuLID = dataType === 'pulid';
 
     return {
       id: def.id,
       source: def.source,
+      sourceHandle: def.sourceHandle,
       target: def.target,
+      targetHandle: def.targetHandle,
       animated,
       label: def.label,
       labelStyle: { fill: 'oklch(0.5 0.01 264)', fontSize: 9, fontWeight: 500 },
       labelBgStyle: { fill: 'oklch(0.1 0.01 264)', fillOpacity: 0.8 },
       labelBgPadding: [4, 2] as [number, number],
       labelBgBorderRadius: 4,
-      style: { stroke: color, strokeWidth: animated ? 2 : 1.5 },
+      style: {
+        stroke: color,
+        strokeWidth: animated ? 2 : 1.5,
+        ...(isPuLID ? { strokeDasharray: '5 3' } : {}),
+      },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color,
@@ -198,10 +328,14 @@ function PipelineFlowLayout() {
             name: stage.name,
             status: stage.status,
             kind: stage.kind,
+            inputs: STAGE_HANDLES[stage.id]?.inputs ?? [],
+            outputs: STAGE_HANDLES[stage.id]?.outputs ?? [],
             outputPath: stage.outputPath,
             prompt: stage.prompt,
             styleApplied: stage.styleApplied,
             pulidEnabled: PULID_STAGES.has(stage.id),
+            cost: stage.cost,
+            durationSec: stage.durationSec,
             onGenerate: () => handleMockGenerate(stage.id),
             onApprove: () => dispatch({ type: 'APPROVE_STAGE', stageId: stage.id }),
             onRetry: () => dispatch({ type: 'RETRY_STAGE', stageId: stage.id }),

@@ -17,7 +17,92 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import type { PipelineStageStatus, StageKind } from '@/types/pipeline';
+import type { PipelineStageStatus, StageKind, StageHandle } from '@/types/pipeline';
+
+// ---------------------------------------------------------------------------
+// Handle color mapping by data type
+// ---------------------------------------------------------------------------
+const HANDLE_COLORS: Record<StageHandle['type'], string> = {
+  image: 'oklch(0.606 0.259 290.79)',   // purple
+  text:  'oklch(0.769 0.188 70.08)',     // gold
+  video: 'oklch(0.696 0.17 162.48)',     // emerald
+};
+
+// ---------------------------------------------------------------------------
+// Per-stage handle definitions
+// ---------------------------------------------------------------------------
+export const STAGE_HANDLES: Record<string, { inputs: StageHandle[]; outputs: StageHandle[] }> = {
+  '1A': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'character_sketch', label: 'Character Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '1B': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'character_2d', label: 'Character 2D', type: 'image', position: 'output' },
+    ],
+  },
+  '2': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID Identity', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'first_frame_sketch', label: 'First Frame Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '3': {
+    inputs: [
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID Identity', type: 'image', position: 'input' },
+      { id: 'style_ref', label: 'Style Reference', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'last_frame_sketch', label: 'Last Frame Sketch', type: 'image', position: 'output' },
+    ],
+  },
+  '4A': {
+    inputs: [
+      { id: 'scene_sketch', label: 'Scene Sketch', type: 'image', position: 'input' },
+      { id: 'character_ref', label: 'Character Ref', type: 'image', position: 'input' },
+      { id: 'location_ref', label: 'Location Ref', type: 'image', position: 'input' },
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID Identity', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'first_frame_final', label: 'First Frame Final', type: 'image', position: 'output' },
+    ],
+  },
+  '4B': {
+    inputs: [
+      { id: 'scene_sketch', label: 'Scene Sketch', type: 'image', position: 'input' },
+      { id: 'character_ref', label: 'Character Ref', type: 'image', position: 'input' },
+      { id: 'location_ref', label: 'Location Ref', type: 'image', position: 'input' },
+      { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
+      { id: 'identity', label: 'PuLID Identity', type: 'image', position: 'input' },
+    ],
+    outputs: [
+      { id: 'last_frame_final', label: 'Last Frame Final', type: 'image', position: 'output' },
+    ],
+  },
+  '5': {
+    inputs: [
+      { id: 'first_frame', label: 'First Frame', type: 'image', position: 'input' },
+      { id: 'last_frame', label: 'Last Frame', type: 'image', position: 'input' },
+      { id: 'positive_prompt', label: 'Positive Prompt', type: 'text', position: 'input' },
+      { id: 'negative_prompt', label: 'Negative Prompt', type: 'text', position: 'input' },
+    ],
+    outputs: [
+      { id: 'video', label: 'Video', type: 'video', position: 'output' },
+    ],
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Node data shape passed from PipelinePageClient
@@ -27,11 +112,15 @@ export interface PipelineStageNodeData {
   name: string;
   status: PipelineStageStatus;
   kind: StageKind;
+  inputs: StageHandle[];
+  outputs: StageHandle[];
   outputPath?: string;
   prompt?: string;
   errorMessage?: string;
   styleApplied: boolean;
   pulidEnabled?: boolean;
+  cost?: number;
+  durationSec?: number;
   onGenerate: () => void;
   onApprove: () => void;
   onRetry: () => void;
@@ -40,19 +129,6 @@ export interface PipelineStageNodeData {
 }
 
 export type PipelineStageNodeType = Node<PipelineStageNodeData, 'pipelineStage'>;
-
-// ---------------------------------------------------------------------------
-// Handle configuration per stage
-// ---------------------------------------------------------------------------
-const HANDLE_CONFIG: Record<string, { left: boolean; right: boolean }> = {
-  '1A': { left: false, right: true },
-  '1B': { left: true, right: true },
-  '2':  { left: true, right: true },
-  '3':  { left: true, right: true },
-  '4A': { left: true, right: true },
-  '4B': { left: true, right: true },
-  '5':  { left: true, right: false },
-};
 
 // ---------------------------------------------------------------------------
 // Status-dependent visual mappings
@@ -85,15 +161,32 @@ const STATUS_BADGE: Record<PipelineStageStatus, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Sub-components for each status body
+// Handle label row component
+// ---------------------------------------------------------------------------
+function HandleLabel({ handle }: { handle: StageHandle }) {
+  return (
+    <div className="flex items-center gap-1.5 h-5">
+      <div
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ background: HANDLE_COLORS[handle.type] }}
+      />
+      <span className="text-[10px] text-white/50 leading-none truncate">
+        {handle.label}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components for each status body (compact versions)
 // ---------------------------------------------------------------------------
 
 function LockedBody() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8 opacity-50">
-      <Lock className="size-8 text-muted-foreground/30" />
-      <p className="text-[11px] text-muted-foreground/40 text-center px-4">
-        Complete previous stages
+    <div className="flex flex-col items-center justify-center gap-1.5 py-4 opacity-50">
+      <Lock className="size-5 text-muted-foreground/30" />
+      <p className="text-[10px] text-muted-foreground/40 text-center">
+        Locked
       </p>
     </div>
   );
@@ -101,64 +194,54 @@ function LockedBody() {
 
 function ActiveBody({
   prompt,
-  styleApplied,
   onGenerate,
 }: {
   prompt?: string;
-  styleApplied: boolean;
   onGenerate: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4">
-      {/* Prompt preview */}
+    <div className="flex flex-col gap-2 py-2">
       {prompt && (
-        <p className="text-[11px] text-muted-foreground/60 font-mono leading-relaxed line-clamp-3">
-          {prompt.length > 80 ? `${prompt.slice(0, 80)}...` : prompt}
+        <p className="text-[10px] text-muted-foreground/50 font-mono leading-relaxed line-clamp-2">
+          {prompt.length > 60 ? `${prompt.slice(0, 60)}...` : prompt}
         </p>
       )}
-
-      {/* Style badge */}
-      {styleApplied && (
-        <div className="flex">
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-muse-purple/10 text-muse-purple border border-muse-purple/20">
-            Style Applied
-          </span>
-        </div>
-      )}
-
-      {/* Generate button */}
-      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
-        <Button
-          onClick={(e) => {
-            e.stopPropagation();
-            onGenerate();
-          }}
-          className={cn(
-            'w-full gap-2',
-            'bg-gradient-to-r from-muse-purple to-muse-purple/80 text-white',
-            'hover:from-muse-purple/90 hover:to-muse-purple/70',
-            'shadow-lg shadow-muse-purple/20',
-          )}
-          size="sm"
-        >
-          <Sparkles className="size-3.5" />
-          Generate
-        </Button>
-      </motion.div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] text-muse-purple/80 font-medium">Ready</span>
+        <div className="flex-1" />
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerate();
+            }}
+            className={cn(
+              'gap-1 h-6 px-2.5 text-[10px]',
+              'bg-gradient-to-r from-muse-purple to-muse-purple/80 text-white',
+              'hover:from-muse-purple/90 hover:to-muse-purple/70',
+              'shadow-lg shadow-muse-purple/20',
+            )}
+            size="sm"
+          >
+            <Sparkles className="size-2.5" />
+            Generate
+          </Button>
+        </motion.div>
+      </div>
     </div>
   );
 }
 
 function GeneratingBody() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8 pipeline-shimmer rounded-b-xl">
+    <div className="flex items-center justify-center gap-2 py-4 pipeline-shimmer rounded-lg">
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
       >
-        <Loader2 className="size-8 text-film-gold" />
+        <Loader2 className="size-5 text-film-gold" />
       </motion.div>
-      <p className="text-xs text-film-gold/80 font-medium">Generating...</p>
+      <p className="text-[10px] text-film-gold/80 font-medium">Generating...</p>
     </div>
   );
 }
@@ -177,8 +260,7 @@ function ReviewBody({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-3">
-      {/* Output preview with blur-to-sharp reveal */}
+    <div className="flex flex-col gap-2 py-2">
       <div className="relative overflow-hidden rounded-lg">
         {kind === 'image' ? (
           <motion.div
@@ -191,7 +273,7 @@ function ReviewBody({
             <img
               src={outputPath}
               alt={`Stage ${stageId} output`}
-              className="w-full h-[120px] object-cover rounded-lg"
+              className="w-full h-[100px] object-cover rounded-lg"
             />
           </motion.div>
         ) : (
@@ -206,22 +288,20 @@ function ReviewBody({
               src={outputPath}
               muted
               playsInline
-              className="w-full h-[120px] object-cover rounded-lg"
+              className="w-full h-[100px] object-cover rounded-lg"
             />
-            {/* Play icon overlay */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="size-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <Play className="size-4 text-white ml-0.5" />
+              <div className="size-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                <Play className="size-3 text-white ml-0.5" />
               </div>
             </div>
           </motion.div>
         )}
       </div>
 
-      {/* Action buttons */}
       <motion.div
-        className="flex items-center gap-2"
-        initial={{ opacity: 0, y: 6 }}
+        className="flex items-center gap-1.5"
+        initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.4 }}
       >
@@ -231,9 +311,9 @@ function ReviewBody({
             onApprove();
           }}
           size="sm"
-          className="flex-1 gap-1.5 bg-muse-emerald hover:bg-muse-emerald/90 text-white text-xs h-8"
+          className="flex-1 gap-1 bg-muse-emerald hover:bg-muse-emerald/90 text-white text-[10px] h-6"
         >
-          <Check className="size-3" />
+          <Check className="size-2.5" />
           Approve
         </Button>
         <Button
@@ -243,9 +323,9 @@ function ReviewBody({
           }}
           size="sm"
           variant="ghost"
-          className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-foreground"
+          className="gap-1 text-[10px] h-6 text-muted-foreground hover:text-foreground"
         >
-          <RotateCcw className="size-3" />
+          <RotateCcw className="size-2.5" />
         </Button>
       </motion.div>
     </div>
@@ -255,13 +335,16 @@ function ReviewBody({
 function ApprovedBody({
   stageId,
   outputPath,
+  cost,
+  durationSec,
 }: {
   stageId: string;
   outputPath?: string;
+  cost?: number;
+  durationSec?: number;
 }) {
   return (
-    <div className="flex items-center gap-3 p-3">
-      {/* Small thumbnail */}
+    <div className="flex items-center gap-2.5 py-2">
       {outputPath && (
         <motion.div
           initial={{ filter: 'blur(8px)', opacity: 0 }}
@@ -273,17 +356,22 @@ function ApprovedBody({
           <img
             src={outputPath}
             alt={`Stage ${stageId} approved`}
-            className="w-[80px] h-[80px] object-cover rounded-lg"
+            className="w-[60px] h-[60px] object-cover rounded-lg"
           />
         </motion.div>
       )}
 
-      {/* Approved badge */}
-      <div className="flex flex-col items-center gap-1.5 flex-1">
-        <div className="size-8 rounded-full bg-muse-emerald/15 flex items-center justify-center">
-          <Check className="size-4 text-muse-emerald" />
+      <div className="flex flex-col items-center gap-1 flex-1">
+        <div className="size-6 rounded-full bg-muse-emerald/15 flex items-center justify-center">
+          <Check className="size-3 text-muse-emerald" />
         </div>
-        <span className="text-[10px] text-muse-emerald font-medium">Approved</span>
+        {(cost != null || durationSec != null) && (
+          <span className="text-[9px] text-white/30 font-mono">
+            {cost != null && `$${cost.toFixed(3)}`}
+            {cost != null && durationSec != null && ' | '}
+            {durationSec != null && `${durationSec}s`}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -297,10 +385,10 @@ function FailedBody({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4">
-      <div className="flex items-start gap-2">
-        <X className="size-4 text-red-400 shrink-0 mt-0.5" />
-        <p className="text-[11px] text-red-300/80 leading-relaxed line-clamp-2">
+    <div className="flex flex-col gap-2 py-2">
+      <div className="flex items-start gap-1.5">
+        <X className="size-3 text-red-400 shrink-0 mt-0.5" />
+        <p className="text-[10px] text-red-300/80 leading-relaxed line-clamp-2">
           {errorMessage || 'Generation failed'}
         </p>
       </div>
@@ -312,9 +400,9 @@ function FailedBody({
           }}
           size="sm"
           variant="ghost"
-          className="w-full gap-2 text-xs border border-red-500/20 hover:bg-red-500/10 hover:text-red-300"
+          className="w-full gap-1.5 text-[10px] h-6 border border-red-500/20 hover:bg-red-500/10 hover:text-red-300"
         >
-          <RotateCcw className="size-3" />
+          <RotateCcw className="size-2.5" />
           Retry
         </Button>
       </motion.div>
@@ -331,27 +419,34 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
     name,
     status,
     kind,
+    inputs,
+    outputs,
     outputPath,
     prompt,
     errorMessage,
     styleApplied,
+    cost,
+    durationSec,
+    pulidEnabled,
     onGenerate,
     onApprove,
     onRetry,
     onSelect,
   } = data;
 
-  const handles = HANDLE_CONFIG[stageId] ?? { left: true, right: true };
   const isGenerating = status === 'generating';
   const isLocked = status === 'locked';
+
+  // Calculate minimum height based on handle count
+  const maxHandles = Math.max(inputs.length, outputs.length, 1);
+  // Each handle row is 20px (h-5), plus header (~40px) and body area (~min 80px)
+  const handleAreaHeight = maxHandles * 20;
 
   return (
     <div
       className={cn(
-        'w-[280px] rounded-xl transition-all duration-300',
-        // Generating uses the animated conic-gradient border wrapper
+        'w-[300px] rounded-xl transition-all duration-300',
         isGenerating && 'pipeline-generating-border',
-        // All other states get the glass base with a colored border
         !isGenerating && 'pipeline-glass',
         !isGenerating && STATUS_BORDER[status],
         !isGenerating && 'border',
@@ -360,7 +455,7 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
       )}
       onClick={onSelect}
     >
-      {/* Inner wrapper — required for generating border to clip content correctly */}
+      {/* Inner wrapper for generating border clip */}
       <div
         className={cn(
           'rounded-xl overflow-hidden',
@@ -370,11 +465,11 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
         {/* ----------------------------------------------------------------- */}
         {/* Header                                                             */}
         {/* ----------------------------------------------------------------- */}
-        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/5">
           {/* Stage ID badge */}
           <span
             className={cn(
-              'text-[10px] font-bold font-mono px-2 py-0.5 rounded-md',
+              'text-[10px] font-bold font-mono px-2 py-0.5 rounded-md shrink-0',
               STATUS_BADGE[status],
             )}
           >
@@ -384,7 +479,7 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
           {/* Stage name */}
           <span
             className={cn(
-              'text-xs font-medium truncate flex-1',
+              'text-[11px] font-medium truncate flex-1',
               isLocked ? 'text-muted-foreground/40' : 'text-foreground/80',
             )}
           >
@@ -392,9 +487,9 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
           </span>
 
           {/* PuLID identity badge */}
-          {data.pulidEnabled && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-300 border border-violet-500/30">
-              <User className="w-2.5 h-2.5" />
+          {pulidEnabled && (
+            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-violet-500/20 text-violet-300 border border-violet-500/30 shrink-0">
+              <User className="w-2 h-2" />
               ID
             </span>
           )}
@@ -403,14 +498,14 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
           {kind === 'video' ? (
             <Film
               className={cn(
-                'size-3.5 shrink-0',
+                'size-3 shrink-0',
                 isLocked ? 'text-muted-foreground/25' : 'text-film-gold/60',
               )}
             />
           ) : (
             <ImageIcon
               className={cn(
-                'size-3.5 shrink-0',
+                'size-3 shrink-0',
                 isLocked ? 'text-muted-foreground/25' : 'text-muse-purple/60',
               )}
             />
@@ -418,77 +513,138 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Body — status-dependent content with animated transitions          */}
+        {/* Body: handle labels + status content side by side                  */}
         {/* ----------------------------------------------------------------- */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={status}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-          >
-            {status === 'locked' && <LockedBody />}
+        <div className="flex" style={{ minHeight: Math.max(handleAreaHeight, 80) }}>
+          {/* Left: input labels */}
+          <div className="flex flex-col justify-center gap-0 py-2 pl-3 pr-1 shrink-0 w-[100px]">
+            {inputs.map((handle) => (
+              <HandleLabel key={handle.id} handle={handle} />
+            ))}
+          </div>
 
-            {status === 'active' && (
-              <ActiveBody
-                prompt={prompt}
-                styleApplied={styleApplied}
-                onGenerate={onGenerate}
-              />
-            )}
+          {/* Center: status body */}
+          <div className="flex-1 px-2 min-w-0">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={status}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="h-full flex flex-col justify-center"
+              >
+                {status === 'locked' && <LockedBody />}
 
-            {status === 'generating' && <GeneratingBody />}
+                {status === 'active' && (
+                  <ActiveBody prompt={prompt} onGenerate={onGenerate} />
+                )}
 
-            {status === 'review' && outputPath && (
-              <ReviewBody
-                stageId={stageId}
-                outputPath={outputPath}
-                kind={kind}
-                onApprove={onApprove}
-                onRetry={onRetry}
-              />
-            )}
+                {status === 'generating' && <GeneratingBody />}
 
-            {status === 'approved' && (
-              <ApprovedBody stageId={stageId} outputPath={outputPath} />
-            )}
+                {status === 'review' && outputPath && (
+                  <ReviewBody
+                    stageId={stageId}
+                    outputPath={outputPath}
+                    kind={kind}
+                    onApprove={onApprove}
+                    onRetry={onRetry}
+                  />
+                )}
 
-            {status === 'failed' && (
-              <FailedBody errorMessage={errorMessage} onRetry={onRetry} />
-            )}
-          </motion.div>
-        </AnimatePresence>
+                {status === 'approved' && (
+                  <ApprovedBody
+                    stageId={stageId}
+                    outputPath={outputPath}
+                    cost={cost}
+                    durationSec={durationSec}
+                  />
+                )}
+
+                {status === 'failed' && (
+                  <FailedBody errorMessage={errorMessage} onRetry={onRetry} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Right: output labels */}
+          <div className="flex flex-col justify-center gap-0 py-2 pr-3 pl-1 shrink-0 w-[100px]">
+            {outputs.map((handle) => (
+              <div key={handle.id} className="flex items-center justify-end gap-1.5 h-5">
+                <span className="text-[10px] text-white/50 leading-none truncate text-right">
+                  {handle.label}
+                </span>
+                <div
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: HANDLE_COLORS[handle.type] }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Handles (connection points)                                          */}
+      {/* Input Handles (left side, positioned to align with labels)           */}
       {/* ------------------------------------------------------------------- */}
-      {handles.left && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className={cn(
-            '!w-3 !h-3 !rounded-full !border-2 !-left-[7px]',
-            '!bg-black/80 !border-white/20',
-            'hover:!border-muse-purple/60 hover:!shadow-[0_0_10px_oklch(0.606_0.259_290.79/0.4)]',
-            'transition-all duration-200',
-          )}
-        />
-      )}
+      {inputs.map((handle, i) => {
+        // Header is ~40px, then each handle label is 20px (h-5), centered in that row
+        // The handle area starts after the header, and we center each handle in its row
+        const headerHeight = 40;
+        const handleRowHeight = 20;
+        const handleAreaTop = headerHeight;
+        const totalHandleAreaHeight = Math.max(inputs.length * handleRowHeight, 80);
+        // Center handles vertically within the handle area
+        const offsetY = (totalHandleAreaHeight - inputs.length * handleRowHeight) / 2;
+        const yPos = handleAreaTop + offsetY + i * handleRowHeight + handleRowHeight / 2;
 
-      {handles.right && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          className={cn(
-            '!w-3 !h-3 !rounded-full !border-2 !-right-[7px]',
-            '!bg-black/80 !border-white/20',
-            'hover:!border-muse-emerald/60 hover:!shadow-[0_0_10px_oklch(0.696_0.17_162.48/0.4)]',
-            'transition-all duration-200',
-          )}
-        />
-      )}
+        return (
+          <Handle
+            key={`in-${handle.id}`}
+            type="target"
+            position={Position.Left}
+            id={`${stageId}-${handle.id}`}
+            style={{
+              top: yPos,
+              background: HANDLE_COLORS[handle.type],
+              width: 8,
+              height: 8,
+              border: '2px solid oklch(0.15 0.01 264)',
+              left: -4,
+            }}
+          />
+        );
+      })}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Output Handles (right side, positioned to align with labels)         */}
+      {/* ------------------------------------------------------------------- */}
+      {outputs.map((handle, i) => {
+        const headerHeight = 40;
+        const handleRowHeight = 20;
+        const handleAreaTop = headerHeight;
+        const totalHandleAreaHeight = Math.max(outputs.length * handleRowHeight, 80);
+        const offsetY = (totalHandleAreaHeight - outputs.length * handleRowHeight) / 2;
+        const yPos = handleAreaTop + offsetY + i * handleRowHeight + handleRowHeight / 2;
+
+        return (
+          <Handle
+            key={`out-${handle.id}`}
+            type="source"
+            position={Position.Right}
+            id={`${stageId}-${handle.id}`}
+            style={{
+              top: yPos,
+              background: HANDLE_COLORS[handle.type],
+              width: 8,
+              height: 8,
+              border: '2px solid oklch(0.15 0.01 264)',
+              right: -4,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
