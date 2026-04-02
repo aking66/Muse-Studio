@@ -9,7 +9,10 @@
     "name": "Kito",
     "description": "small orange fox, blue scarf around neck, big curious eyes, fluffy tail with white tip",
     "prompt_positive": "small orange fox, blue scarf around neck, big curious eyes, fluffy tail with white tip, 2D animated character, flat colors, clean line art, thick black outlines, cel shading",
-    "prompt_negative": "3D render, realistic, blurry, distorted, deformed, low quality"
+    "prompt_negative": "3D render, realistic, blurry, distorted, deformed, low quality",
+    "pulid_enabled": true,
+    "pulid_strength": 1.4,
+    "pulid_ref_stage": "1B"
   },
 
   "style": {

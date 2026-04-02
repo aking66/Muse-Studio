@@ -78,6 +78,11 @@ function isEdgeAnimated(sourceStatus: PipelineStageStatus, targetStatus: Pipelin
 }
 
 // ---------------------------------------------------------------------------
+// Stages that use PuLID identity preservation
+// ---------------------------------------------------------------------------
+const PULID_STAGES = new Set(['2', '3', '4A', '4B']);
+
+// ---------------------------------------------------------------------------
 // Build initial nodes from pipeline state
 // ---------------------------------------------------------------------------
 function buildNodes(
@@ -99,6 +104,7 @@ function buildNodes(
         outputPath: stage.outputPath,
         prompt: stage.prompt,
         styleApplied: stage.styleApplied,
+        pulidEnabled: PULID_STAGES.has(id),
         onGenerate: () => onMockGenerate(id),
         onApprove: () => dispatch({ type: 'APPROVE_STAGE', stageId: id }),
         onRetry: () => dispatch({ type: 'RETRY_STAGE', stageId: id }),
@@ -195,6 +201,7 @@ function PipelineFlowLayout() {
             outputPath: stage.outputPath,
             prompt: stage.prompt,
             styleApplied: stage.styleApplied,
+            pulidEnabled: PULID_STAGES.has(stage.id),
             onGenerate: () => handleMockGenerate(stage.id),
             onApprove: () => dispatch({ type: 'APPROVE_STAGE', stageId: stage.id }),
             onRetry: () => dispatch({ type: 'RETRY_STAGE', stageId: stage.id }),

@@ -28,6 +28,10 @@ ssh ... "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,
 | **4** | Sketch (Input) | LoadImage | `inputs.image` | `blank.png` (Stage 1A has no input image) |
 | **5** | Scale Sketch | ImageScaleToTotalPixels | `inputs.resolution_steps` | Add `1` (fix for newer ComfyUI) |
 | **6** | Prompt (Input) | CLIPTextEncode | `inputs.text` | Prompt string |
+| **100** | PuLID InsightFace | PuLIDInsightFaceLoader | — | Face detection (CUDA) |
+| **101** | PuLID EVA-CLIP | PuLIDEVACLIPLoader | — | Visual encoding |
+| **102** | PuLID Model | PuLIDModelLoader | — | Loads pulid_flux_v0.9.1 |
+| **103** | Identity Reference (Input) | LoadImage | `inputs.image` | `blank.png` (no ref for Stage 1A) |
 | 17 | Generated Image (Output) | SaveImage | — | Output node |
 
 ## flux2-ref-to-image-api.json (Stage 1B, 2, 3)
@@ -39,6 +43,10 @@ ssh ... "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,
 | **6** | Scale Sketch | ImageScaleToTotalPixels | `inputs.resolution_steps` | Add `1` |
 | **7** | Scale Reference | ImageScaleToTotalPixels | `inputs.resolution_steps` | Add `1` |
 | **8** | Prompt (Input) | CLIPTextEncode | `inputs.text` | Prompt string |
+| **100** | PuLID InsightFace | PuLIDInsightFaceLoader | — | Face detection (CUDA) |
+| **101** | PuLID EVA-CLIP | PuLIDEVACLIPLoader | — | Visual encoding |
+| **102** | PuLID Model | PuLIDModelLoader | — | Loads pulid_flux_v0.9.1 |
+| **103** | Identity Reference (Input) | LoadImage | `inputs.image` | `blank.png` (1B) or `character_2d.png` (2, 3) |
 | 21 | Generated Image (Output) | SaveImage | — | Output node |
 
 ### What goes where per stage:
@@ -64,6 +72,10 @@ ssh ... "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,
 | **21** | Scale Character | ImageScaleToTotalPixels | `inputs.resolution_steps` | Add `1` |
 | **22** | Scale Location | ImageScaleToTotalPixels | `inputs.resolution_steps` | Add `1` |
 | **30** | Scene Prompt (Input) | CLIPTextEncode | `inputs.text` | Final frame prompt + [STYLE_KEYWORDS] |
+| **100** | PuLID InsightFace | PuLIDInsightFaceLoader | — | Face detection (CUDA) |
+| **101** | PuLID EVA-CLIP | PuLIDEVACLIPLoader | — | Visual encoding |
+| **102** | PuLID Model | PuLIDModelLoader | — | Loads pulid_flux_v0.9.1 |
+| **103** | Identity Reference (Input) | LoadImage | `inputs.image` | `character_2d.png` (identity ref from Stage 1B) |
 | 67 | Final Frame (Output) | SaveImage | — | Output node |
 
 ### What goes where per stage:
@@ -98,6 +110,38 @@ ssh ... "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,
 | Steps | 20, 21 | steps | 20 | Split: 10 high + 10 low noise |
 | FPS | 32 | fps | 16 | Standard animation rate |
 | VBVR LoRA | 5 | strength_model | 0.4 | On high noise expert only |
+
+## PuLID Identity Preservation
+
+PuLID keeps the character's face and features consistent across all generation stages. It uses four new nodes (100-103) added to each Flux 2 workflow:
+
+| Node ID | Title | Class Type | Purpose |
+|---------|-------|-----------|---------|
+| **100** | PuLID InsightFace | PuLIDInsightFaceLoader | Face detection/analysis (provider: CUDA) |
+| **101** | PuLID EVA-CLIP | PuLIDEVACLIPLoader | Visual encoding for identity |
+| **102** | PuLID Model | PuLIDModelLoader | Loads `pulid_flux_v0.9.1.safetensors` |
+| **103** | PuLID Identity (Input) | ApplyPuLIDFlux2 | Applies identity to model. `inputs.image` = face ref, `inputs.strength` = 1.4 |
+
+### Which stages use PuLID identity reference
+
+| Stage | Node 103 Value | Reason |
+|-------|---------------|--------|
+| **1A** | `blank.png` | No identity ref yet — this stage creates the initial sketch |
+| **1B** | `blank.png` | No identity ref yet — this stage creates the character sheet |
+| **2** | `character_2d.png` | Preserves character face/features from Stage 1B output |
+| **3** | `character_2d.png` | Preserves character face/features from Stage 1B output |
+| **4A** | `character_2d.png` | Preserves character face/features from Stage 1B output |
+| **4B** | `character_2d.png` | Preserves character face/features from Stage 1B output |
+
+### PuLID strength
+
+- Recommended: **1.4** (strong identity lock)
+- Lower values (0.5-1.0) allow more style variation but weaker identity match
+- Higher values (1.5+) may over-constrain and reduce pose/expression flexibility
+
+### Patching node 103
+
+For stages 1A and 1B, node 103 uses `blank.png` (placeholder). For stages 2, 3, 4A, and 4B, patch node 103 with the Stage 1B output (`character_2d.png`). Upload the image to ComfyUI's input folder before sending the workflow.
 
 ## Image Upload Before Patching
 

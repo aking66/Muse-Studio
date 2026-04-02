@@ -177,10 +177,49 @@
     }
   },
 
+  "100": {
+    "class_type": "PuLIDInsightFaceLoader",
+    "inputs": {
+      "provider": "CUDA"
+    },
+    "_meta": {
+      "title": "PuLID InsightFace"
+    }
+  },
+  "101": {
+    "class_type": "PuLIDEVACLIPLoader",
+    "inputs": {},
+    "_meta": {
+      "title": "PuLID EVA-CLIP"
+    }
+  },
+  "102": {
+    "class_type": "PuLIDModelLoader",
+    "inputs": {
+      "pulid_file": "pulid_flux_v0.9.1.safetensors"
+    },
+    "_meta": {
+      "title": "PuLID Model"
+    }
+  },
+  "103": {
+    "class_type": "ApplyPuLIDFlux2",
+    "inputs": {
+      "model": ["1", 0],
+      "pulid_model": ["102", 0],
+      "strength": 1.4,
+      "eva_clip": ["101", 0],
+      "face_analysis": ["100", 0],
+      "image": "character_ref.png"
+    },
+    "_meta": {
+      "title": "PuLID Identity (Input)"
+    }
+  },
   "60": {
     "class_type": "BasicGuider",
     "inputs": {
-      "model": ["1", 0],
+      "model": ["103", 0],
       "conditioning": ["52", 0]
     },
     "_meta": {

@@ -63,6 +63,21 @@
         "source": "Comfy-Org/flux2-dev",
         "required": true
       },
+      "pulid": {
+        "file": "pulid_flux_v0.9.1.safetensors",
+        "path": "pulid/",
+        "size_gb": 0.8,
+        "source": "https://huggingface.co/guozinan/PuLID",
+        "required": true,
+        "strength": 1.4,
+        "note": "Identity preservation — keeps character face/features consistent across stages"
+      },
+      "insightface": {
+        "model": "antelopev2",
+        "path": "insightface/models/antelopev2/",
+        "required": true,
+        "note": "Face detection/analysis for PuLID. Auto-downloads on first use."
+      },
       "clip_type": "flux2",
       "loader_node": "CLIPLoader",
       "wrong_loader": "DualCLIPLoader",
@@ -190,7 +205,8 @@
       "inputs": {
         "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "Stage 1A has no input image"},
         "5": {"field": "inputs.resolution_steps", "value": 1, "source": "fix", "note": "Required by newer ComfyUI"},
-        "6": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "6": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "role": "Identity reference (PuLID)", "note": "No identity ref for first stages"}
       },
       "output": "character_sketch.png",
       "output_used_by": ["1B", "2", "3"],
@@ -216,7 +232,8 @@
         "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "No style ref for first character gen"},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
-        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "role": "Identity reference (PuLID)", "note": "No identity ref for first stages"}
       },
       "output": "character_2d.png",
       "output_used_by": ["4A", "4B"],
@@ -241,7 +258,8 @@
         "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
-        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
       },
       "output": "first_frame_sketch.png",
       "output_used_by": ["3", "4A"],
@@ -261,7 +279,8 @@
         "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
-        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
       },
       "output": "last_frame_sketch.png",
       "output_used_by": ["4B"],
@@ -284,7 +303,8 @@
         "20": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "21": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "22": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
-        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
       },
       "output": "first_frame_final.png",
       "output_used_by": ["5"],
@@ -306,7 +326,8 @@
         "20": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "21": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "22": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
-        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
+        "103": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Identity reference (PuLID)", "note": "character_2d.png preserves face/features"}
       },
       "output": "last_frame_final.png",
       "output_used_by": ["5"],
@@ -381,6 +402,13 @@
       "problem": "Using sketch as ReferenceLatent input makes output copy sketch style",
       "fix": "Use blank.png for reference inputs, control style via prompt only",
       "affected_stages": ["1B", "2", "3"]
+    },
+    "PuLID_identity_ref": {
+      "node_id": "103",
+      "field": "inputs.image",
+      "description": "PuLID identity reference image — set to character_2d.png (Stage 1B output) for all stages after 1B",
+      "stages_without_ref": ["1A", "1B"],
+      "stages_with_ref": ["2", "3", "4A", "4B"]
     },
     "upload_before_send": {
       "endpoint": "POST {comfyui_url}/upload/image",

@@ -13,6 +13,7 @@ import {
   Lock,
   ImageIcon,
   Film,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ export interface PipelineStageNodeData {
   prompt?: string;
   errorMessage?: string;
   styleApplied: boolean;
+  pulidEnabled?: boolean;
   onGenerate: () => void;
   onApprove: () => void;
   onRetry: () => void;
@@ -388,6 +390,14 @@ function PipelineStageNodeComponent({ data, selected }: NodeProps<PipelineStageN
           >
             {name}
           </span>
+
+          {/* PuLID identity badge */}
+          {data.pulidEnabled && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-violet-500/20 text-violet-300 border border-violet-500/30">
+              <User className="w-2.5 h-2.5" />
+              ID
+            </span>
+          )}
 
           {/* Kind icon */}
           {kind === 'video' ? (
