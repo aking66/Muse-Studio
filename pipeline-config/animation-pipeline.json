@@ -1,0 +1,453 @@
+{
+  "pipeline": {
+    "id": "2d-animation-v1",
+    "name": "2D Animation Pipeline",
+    "version": "1.0.0",
+    "description": "From character description to animated video via ComfyUI workflows",
+    "docs": "docs/animation-pipeline-plan.md"
+  },
+
+  "infrastructure": {
+    "backend_url": "http://localhost:4501",
+    "comfyui_url": null,
+    "comfyui_source": "runpod",
+    "runpod": {
+      "volume_id": "dcdcqra0a7",
+      "datacenter": "EU-NL-1",
+      "gpu_preferences": ["NVIDIA L40S", "NVIDIA A40", "NVIDIA RTX A6000"],
+      "cost_per_hour": 0.86,
+      "startup_script": "/Users/ahmed/runpod/scripts/pod_retry.sh",
+      "ssh_key": "~/.ssh/id_ed25519",
+      "docs": ".claude/skills/runpod/SKILL.md"
+    },
+    "local": {
+      "comfyui_url": "http://127.0.0.1:8000",
+      "docs": null
+    },
+    "env_notes": "Backend does NOT read .env files. Pass COMFYUI_BASE_URL as inline shell env var. pkill unreliable — use kill -9 $(lsof -ti :4501)",
+    "docs": ".claude/skills/runpod-ops/SKILL.md"
+  },
+
+  "models": {
+    "flux2": {
+      "unet": {
+        "file": "flux2_dev_fp8mixed.safetensors",
+        "path": "diffusion_models/",
+        "size_gb": 34,
+        "vram_gb": 12,
+        "source": "Comfy-Org/flux2-dev",
+        "required": true
+      },
+      "text_encoder": {
+        "file": "mistral_3_small_flux2_fp8.safetensors",
+        "path": "text_encoders/",
+        "size_gb": 17,
+        "vram_gb": 17,
+        "source": "Comfy-Org/flux2-dev",
+        "hf_path": "split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors",
+        "requires_auth": true,
+        "required": true,
+        "alternatives": {
+          "bf16": {"file": "mistral_3_small_flux2_bf16.safetensors", "size_gb": 33, "note": "Best quality, needs 80GB+ GPU"},
+          "fp4": {"file": "mistral_3_small_flux2_fp4_mixed.safetensors", "size_gb": 11.4, "note": "Smallest, some quality loss"}
+        },
+        "wrong_models": [
+          {"file": "clip_l.safetensors", "reason": "Flux 1 encoder, NOT used by Flux 2"},
+          {"file": "t5xxl", "reason": "Flux 1 encoder, NOT used by Flux 2"}
+        ]
+      },
+      "vae": {
+        "file": "flux2-vae.safetensors",
+        "path": "vae/",
+        "size_gb": 0.3,
+        "source": "Comfy-Org/flux2-dev",
+        "required": true
+      },
+      "clip_type": "flux2",
+      "loader_node": "CLIPLoader",
+      "wrong_loader": "DualCLIPLoader",
+      "total_vram_gb": 30,
+      "docs": ".claude/skills/animation-pipeline/references/workflow-map.md"
+    },
+    "wan22": {
+      "high_noise": {
+        "file": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+        "path": "diffusion_models/",
+        "size_gb": 14,
+        "required": true
+      },
+      "low_noise": {
+        "file": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+        "path": "diffusion_models/",
+        "size_gb": 14,
+        "required": true
+      },
+      "text_encoder": {
+        "file": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "path": "text_encoders/",
+        "size_gb": 6.3,
+        "required": true
+      },
+      "vae": {
+        "file": "wan_2.1_vae.safetensors",
+        "path": "vae/",
+        "size_gb": 0.24,
+        "required": true
+      },
+      "lora_vbvr": {
+        "file": "Wan22_I2V_VBVR_HIGH_rank_64_fp16.safetensors",
+        "path": "loras/",
+        "size_gb": 0.6,
+        "strength": 0.4,
+        "apply_to": "high_noise_only",
+        "required": true,
+        "note": "Better motion dynamics than lightx2v LoRA"
+      },
+      "total_vram_gb": 34
+    }
+  },
+
+  "style": {
+    "default": {
+      "name": "2D Flat Vector",
+      "keywords": "2D flat vector animation, bold black outlines, simple cel-shading, vibrant solid colors, clean minimalist backgrounds, high contrast",
+      "negative": "3D render, realistic, blurry, distorted, morphing, low quality, jerky motion, flickering, frame skip, inconsistent style, deformed, static image"
+    },
+    "presets": [
+      {
+        "id": "rick-and-morty",
+        "name": "Rick and Morty",
+        "keywords": "2D flat vector animation style, Rick and Morty art style, bold black outlines, simple cel-shading, vibrant solid colors, clean minimalist backgrounds, high contrast, adult animation aesthetic",
+        "negative": "3D render, realistic, blurry, distorted, deformed, low quality, sketch, pencil lines"
+      },
+      {
+        "id": "ghibli",
+        "name": "Studio Ghibli",
+        "keywords": "Studio Ghibli art style, soft watercolor textures, gentle lighting, lush detailed backgrounds, warm color palette, hand-drawn feel, expressive characters",
+        "negative": "3D render, flat colors, bold outlines, low quality, blurry"
+      },
+      {
+        "id": "disney-2d",
+        "name": "Disney 2D",
+        "keywords": "classic Disney 2D animation style, smooth line art, rich colors, expressive features, dynamic poses, polished cel shading",
+        "negative": "3D render, realistic, flat, minimalist, low quality"
+      },
+      {
+        "id": "anime",
+        "name": "Anime",
+        "keywords": "anime art style, sharp clean lines, vibrant colors, dramatic lighting, detailed eyes, manga-influenced proportions",
+        "negative": "3D render, western cartoon, blurry, distorted, low quality"
+      },
+      {
+        "id": "minimalist",
+        "name": "Minimalist",
+        "keywords": "minimalist vector art, flat colors, geometric shapes, limited color palette, no outlines, modern design",
+        "negative": "detailed, realistic, complex backgrounds, 3D render, blurry"
+      }
+    ]
+  },
+
+  "resolution": {
+    "default": {"width": 832, "height": 480, "aspect": "16:9", "label": "Standard Widescreen"},
+    "options": [
+      {"width": 832, "height": 480, "aspect": "16:9", "label": "Standard Widescreen"},
+      {"width": 640, "height": 640, "aspect": "1:1", "label": "Square (social media)"},
+      {"width": 480, "height": 854, "aspect": "9:16", "label": "Vertical (mobile/reels)"}
+    ],
+    "rule": "ALL stages MUST use the same resolution"
+  },
+
+  "video_settings": {
+    "frames": 81,
+    "fps": 16,
+    "duration_sec": 5.0,
+    "cfg": 1.0,
+    "steps": 20,
+    "step_split": {"high_noise": 10, "low_noise": 10},
+    "shift": 8.0,
+    "frame_rule": "Must be 4n+1: 17, 33, 49, 65, 81, 97",
+    "frame_options": [
+      {"frames": 17, "duration": "~1s", "use": "Expression change, blink"},
+      {"frames": 33, "duration": "~2s", "use": "Head turn, small gesture"},
+      {"frames": 49, "duration": "~3s", "use": "Walk cycle, reach"},
+      {"frames": 65, "duration": "~4s", "use": "Complex action"},
+      {"frames": 81, "duration": "~5s", "use": "Standard shot (default)"},
+      {"frames": 97, "duration": "~6s", "use": "Long continuous motion"}
+    ],
+    "cfg_rule": "NEVER increase above 1.0 — causes blur and artifacts"
+  },
+
+  "stages": [
+    {
+      "id": "1A",
+      "name": "Character Sketch",
+      "purpose": "Generate rough sketch reference of the character",
+      "workflow": "muse-studio/workflows/flux2-sketch-to-image-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": false,
+      "prompt_template": "character sketch, rough line art, {character.description}, front view, 3/4 view, side view, pencil sketch style, white background",
+      "inputs": {
+        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "Stage 1A has no input image"},
+        "5": {"field": "inputs.resolution_steps", "value": 1, "source": "fix", "note": "Required by newer ComfyUI"},
+        "6": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "character_sketch.png",
+      "output_used_by": ["1B", "2", "3"],
+      "performance": {
+        "first_run_sec": 212,
+        "cached_sec": 60,
+        "vram_peak_mb": 30000,
+        "cost_first": 0.050,
+        "cost_cached": 0.014
+      }
+    },
+    {
+      "id": "1B",
+      "name": "Character 2D",
+      "purpose": "Generate polished styled character sheet",
+      "workflow": "muse-studio/workflows/flux2-ref-to-image-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": true,
+      "prompt_template": "character sheet, {character.description}, front view, 3/4 view, side view, {style.keywords}, white background",
+      "inputs": {
+        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "Do NOT use character_sketch — ReferenceLatent copies sketch style"},
+        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "No style ref for first character gen"},
+        "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "character_2d.png",
+      "output_used_by": ["4A", "4B"],
+      "critical_lesson": "Using character_sketch.png as ReferenceLatent input makes output look like sketch. Use blank.png and control style entirely via prompt.",
+      "performance": {
+        "first_run_sec": 60,
+        "cached_sec": 35,
+        "cost_cached": 0.008
+      }
+    },
+    {
+      "id": "2",
+      "name": "First Frame Sketch",
+      "purpose": "Sketch the opening scene composition",
+      "workflow": "muse-studio/workflows/flux2-ref-to-image-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": false,
+      "prompt_template": "scene sketch, rough line art, {character.name} {shot.first_frame_action} in {shot.location}, {shot.camera_angle}, pencil sketch style, composition reference, clear proportions",
+      "inputs": {
+        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "first_frame_sketch.png",
+      "output_used_by": ["3", "4A"],
+      "performance": {"cached_sec": 35, "cost_cached": 0.008}
+    },
+    {
+      "id": "3",
+      "name": "Last Frame Sketch",
+      "purpose": "Sketch the ending scene — small pose change from first frame",
+      "workflow": "muse-studio/workflows/flux2-ref-to-image-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": false,
+      "prompt_template": "scene sketch, rough line art, {character.name} {shot.last_frame_action} in {shot.location}, {shot.camera_angle}, pencil sketch style, same background as reference",
+      "inputs": {
+        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder"},
+        "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "last_frame_sketch.png",
+      "output_used_by": ["4B"],
+      "motion_rule": "Keep small-to-medium pose change from first frame. Too much difference = broken video interpolation.",
+      "performance": {"cached_sec": 35, "cost_cached": 0.008}
+    },
+    {
+      "id": "4A",
+      "name": "Final First Frame",
+      "purpose": "Render polished styled first frame from references",
+      "workflow": "muse-studio/workflows/flux2-multiref-scene-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": true,
+      "prompt_template": "{character.name} {shot.first_frame_action}, {shot.background_description}, {style.keywords}, {shot.lighting}",
+      "inputs": {
+        "10": {"field": "inputs.image", "value": "{stages.2.output}", "source": "stage_output", "role": "Scene composition"},
+        "11": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Character identity"},
+        "12": {"field": "inputs.image", "value": "{shot.location_ref}", "source": "user_upload", "role": "Background reference", "optional": true, "fallback": "blank.png"},
+        "20": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "21": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "22": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "first_frame_final.png",
+      "output_used_by": ["5"],
+      "performance": {"cached_sec": 60, "cost_cached": 0.014}
+    },
+    {
+      "id": "4B",
+      "name": "Final Last Frame",
+      "purpose": "Render polished styled last frame matching first frame",
+      "workflow": "muse-studio/workflows/flux2-multiref-scene-api.json",
+      "model": "flux2",
+      "kind": "image",
+      "style_applied": true,
+      "prompt_template": "{character.name} {shot.last_frame_action}, {shot.background_description}, {style.keywords}, {shot.lighting}",
+      "inputs": {
+        "10": {"field": "inputs.image", "value": "{stages.3.output}", "source": "stage_output", "role": "Scene composition"},
+        "11": {"field": "inputs.image", "value": "{stages.1B.output}", "source": "stage_output", "role": "Character identity"},
+        "12": {"field": "inputs.image", "value": "{shot.location_ref}", "source": "user_upload", "role": "Background reference", "optional": true, "fallback": "blank.png"},
+        "20": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "21": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "22": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
+        "30": {"field": "inputs.text", "value": "{prompt}", "source": "generated"}
+      },
+      "output": "last_frame_final.png",
+      "output_used_by": ["5"],
+      "performance": {"cached_sec": 60, "cost_cached": 0.014}
+    },
+    {
+      "id": "5",
+      "name": "Video Generation",
+      "purpose": "Interpolate between first and last frames to create animation",
+      "workflow": "muse-studio/workflows/wan22-flf2v-api.json",
+      "model": "wan22",
+      "kind": "video",
+      "style_applied": true,
+      "prompt_template": {
+        "positive": "{character.name} {shot.motion_description}, smooth motion, {style.keywords}, consistent character proportions, fluid animation",
+        "negative": "{style.negative}"
+      },
+      "inputs": {
+        "10": {"field": "inputs.image", "value": "{stages.4A.output}", "source": "stage_output", "role": "First frame"},
+        "11": {"field": "inputs.image", "value": "{stages.4B.output}", "source": "stage_output", "role": "Last frame"},
+        "12": {"field": "inputs.text", "value": "{prompt.positive}", "source": "generated"},
+        "13": {"field": "inputs.text", "value": "{prompt.negative}", "source": "generated"},
+        "31": {"field": "inputs.format", "value": "mp4", "source": "fix"},
+        "31_codec": {"field": "inputs.codec", "value": "h264", "source": "fix"}
+      },
+      "output": "video.mp4",
+      "output_used_by": [],
+      "upload_required": ["10", "11"],
+      "performance": {
+        "first_run_sec": 408,
+        "cached_sec": 180,
+        "vram_peak_mb": 36069,
+        "cost_first": 0.097,
+        "cost_cached": 0.043
+      }
+    }
+  ],
+
+  "multi_shot": {
+    "character_stages": ["1A", "1B"],
+    "per_shot_stages": ["2", "3", "4A", "4B", "5"],
+    "continuity_rule": "Last frame of Shot N should roughly match first frame of Shot N+1",
+    "same_location_rule": "Use same location_ref across all shots in same scene",
+    "estimated_cost_per_shot": 0.095,
+    "estimated_time_per_shot_sec": 225
+  },
+
+  "comfyui_fixes": {
+    "description": "Required patches for RunPod ComfyUI compatibility",
+    "ImageScaleToTotalPixels": {
+      "add_field": "resolution_steps",
+      "value": 1,
+      "reason": "Newer ComfyUI versions require this field"
+    },
+    "SaveVideo": {
+      "add_fields": {"format": "mp4", "codec": "h264"},
+      "reason": "SaveVideo validation requires format and codec"
+    },
+    "LoadImage_placeholder": {
+      "file": "blank.png",
+      "size": "832x480",
+      "color": "white",
+      "create_cmd": "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,255)).save('/opt/comfyui-baked/input/blank.png')\"",
+      "reason": "LoadImage nodes validate file exists. Use blank for stages without reference images"
+    },
+    "CLIPLoader_not_DualCLIPLoader": {
+      "correct": {"class_type": "CLIPLoader", "type": "flux2"},
+      "wrong": {"class_type": "DualCLIPLoader", "type": "flux"},
+      "reason": "Flux 2 uses single Mistral encoder. DualCLIPLoader is Flux 1 only"
+    },
+    "ReferenceLatent_copies_style": {
+      "problem": "Using sketch as ReferenceLatent input makes output copy sketch style",
+      "fix": "Use blank.png for reference inputs, control style via prompt only",
+      "affected_stages": ["1B", "2", "3"]
+    },
+    "upload_before_send": {
+      "endpoint": "POST {comfyui_url}/upload/image",
+      "reason": "All images in LoadImage nodes must exist in ComfyUI input folder before workflow submission"
+    }
+  },
+
+  "error_patterns": [
+    {
+      "error": "mat1 and mat2 shapes cannot be multiplied",
+      "cause": "Wrong CLIP loader or model. Usually DualCLIPLoader instead of CLIPLoader",
+      "fix": "Use CLIPLoader with type=flux2 and mistral_fp8 only"
+    },
+    {
+      "error": "type: 'flux' not in list",
+      "cause": "CLIPLoader type should be 'flux2' not 'flux'",
+      "fix": "Change type to 'flux2'"
+    },
+    {
+      "error": "resolution_steps required",
+      "cause": "Newer ComfyUI requires this field in ImageScaleToTotalPixels",
+      "fix": "Add resolution_steps: 1 to inputs"
+    },
+    {
+      "error": "Invalid image file",
+      "cause": "LoadImage references a file not in ComfyUI input folder",
+      "fix": "Upload image via /upload/image endpoint first, or use blank.png"
+    },
+    {
+      "error": "All connection attempts failed",
+      "cause": "Backend COMFYUI_BASE_URL wrong or ComfyUI not running",
+      "fix": "Check pod status, verify URL, restart backend with correct env var"
+    },
+    {
+      "error": "codec, format",
+      "cause": "SaveVideo missing required fields",
+      "fix": "Add format: mp4, codec: h264 to SaveVideo inputs"
+    },
+    {
+      "error": "unet_name not in []",
+      "cause": "ComfyUI started before model symlinks were created",
+      "fix": "Kill auto-started ComfyUI, recreate symlinks, restart with extra_model_paths.yaml"
+    }
+  ],
+
+  "performance_baselines": {
+    "gpu": "NVIDIA L40S",
+    "vram_gb": 44,
+    "flux2_first_run_sec": 212,
+    "flux2_cached_sec": 60,
+    "wan22_first_run_sec": 408,
+    "wan22_cached_sec": 180,
+    "full_pipeline_first_sec": 870,
+    "full_pipeline_cached_sec": 405,
+    "full_pipeline_cost_first": 0.21,
+    "full_pipeline_cost_cached": 0.10
+  },
+
+  "ops_rules": [
+    "TIME IS MONEY — every second costs $0.00024 on L40S",
+    "Validate workflows LOCALLY before sending to RunPod",
+    "Check /object_info/UNETLoader — model list must NOT be empty",
+    "Batch all generations while model is loaded in VRAM",
+    "First generation is slowest (model loading) — plan accordingly",
+    "ALWAYS stop pod when done",
+    "Track every generation in ops-data/session_*.json",
+    "Never curl -o over a symlink — corrupts target file",
+    "Backend has no dotenv — pass env vars inline"
+  ]
+}
