@@ -154,3 +154,193 @@
   z-index: 9999;
   opacity: 0.4;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Animation Pipeline — Visual Effects
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Animated conic gradient border for "generating" state */
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes gradient-rotate {
+  to { --gradient-angle: 360deg; }
+}
+
+.pipeline-generating-border {
+  position: relative;
+  border-radius: var(--radius);
+  padding: 2px;
+  background: conic-gradient(
+    from var(--gradient-angle),
+    oklch(0.606 0.259 290.79),
+    oklch(0.769 0.188 70.08),
+    oklch(0.696 0.17 162.48),
+    oklch(0.606 0.259 290.79)
+  );
+  animation: gradient-rotate 2s linear infinite;
+}
+
+.pipeline-generating-border > * {
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.pipeline-shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.15 0.01 264) 25%,
+    oklch(0.20 0.02 264) 50%,
+    oklch(0.15 0.01 264) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Glow effects for stage states */
+.pipeline-glow-purple {
+  box-shadow: 0 0 20px oklch(0.606 0.259 290.79 / 0.3),
+              0 0 40px oklch(0.606 0.259 290.79 / 0.1);
+}
+
+.pipeline-glow-gold {
+  box-shadow: 0 0 20px oklch(0.769 0.188 70.08 / 0.3),
+              0 0 40px oklch(0.769 0.188 70.08 / 0.1);
+}
+
+.pipeline-glow-emerald {
+  box-shadow: 0 0 20px oklch(0.696 0.17 162.48 / 0.3),
+              0 0 40px oklch(0.696 0.17 162.48 / 0.1);
+}
+
+.pipeline-glow-red {
+  box-shadow: 0 0 20px oklch(0.577 0.245 27.33 / 0.3),
+              0 0 40px oklch(0.577 0.245 27.33 / 0.1);
+}
+
+/* Glassmorphism panel */
+.pipeline-glass {
+  background: oklch(0.12 0.01 264 / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 0.05);
+}
+
+/* Progress ring */
+@keyframes progress-ring-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.pipeline-progress-ring {
+  animation: progress-ring-rotate 1.5s linear infinite;
+}
+
+/* Pulse glow for active stage */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px oklch(0.606 0.259 290.79 / 0.2); }
+  50% { box-shadow: 0 0 25px oklch(0.606 0.259 290.79 / 0.4); }
+}
+
+.pipeline-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Stage indicator dot */
+.pipeline-stage-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.pipeline-stage-dot-locked {
+  background: oklch(0.3 0.01 264);
+}
+
+.pipeline-stage-dot-active {
+  background: oklch(0.606 0.259 290.79);
+  box-shadow: 0 0 10px oklch(0.606 0.259 290.79 / 0.5);
+}
+
+.pipeline-stage-dot-generating {
+  background: oklch(0.769 0.188 70.08);
+  animation: pulse-glow 1s ease-in-out infinite;
+}
+
+.pipeline-stage-dot-review {
+  background: oklch(0.769 0.188 70.08);
+  box-shadow: 0 0 10px oklch(0.769 0.188 70.08 / 0.5);
+}
+
+.pipeline-stage-dot-approved {
+  background: oklch(0.696 0.17 162.48);
+  box-shadow: 0 0 10px oklch(0.696 0.17 162.48 / 0.5);
+}
+
+.pipeline-stage-dot-failed {
+  background: oklch(0.577 0.245 27.33);
+  box-shadow: 0 0 10px oklch(0.577 0.245 27.33 / 0.5);
+}
+
+/* Gradient text for pipeline header */
+.pipeline-gradient-text {
+  background: linear-gradient(
+    135deg,
+    oklch(0.606 0.259 290.79),
+    oklch(0.769 0.188 70.08)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Timeline connector line */
+.pipeline-timeline-line {
+  position: absolute;
+  left: 5px;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    oklch(0.606 0.259 290.79),
+    oklch(0.769 0.188 70.08),
+    oklch(0.696 0.17 162.48),
+    oklch(0.3 0.01 264)
+  );
+}
+
+/* React Flow dark theme overrides for pipeline canvas */
+.pipeline-flow-canvas {
+  background: oklch(0.08 0.01 264) !important;
+}
+
+.pipeline-flow-canvas .react-flow__node {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.pipeline-flow-canvas .react-flow__edge-text {
+  fill: oklch(0.5 0.01 264);
+}
+
+.pipeline-flow-canvas .react-flow__edge-textbg {
+  fill: oklch(0.1 0.01 264);
+  fill-opacity: 0.8;
+}
+
+.pipeline-flow-canvas .react-flow__attribution {
+  display: none;
+}
+
+.pipeline-flow-canvas .react-flow__minimap {
+  background: oklch(0.08 0.01 264 / 0.8) !important;
+}

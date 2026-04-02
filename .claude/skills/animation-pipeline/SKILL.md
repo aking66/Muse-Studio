@@ -168,14 +168,56 @@ At the start of every pipeline run, ask the user which art style to use. The sty
 
 The user can also provide their own custom style keywords. Store the chosen style as `[STYLE_KEYWORDS]` and inject it into every prompt template.
 
+## JSON-Based Run Files
+
+The pipeline uses TWO JSON files:
+- **Config** (`pipeline-config/animation-pipeline.json`) — stages, models, styles, fixes. NEVER changes during a run.
+- **Run state** (`pipeline-config/runs/run_{id}.json`) — runtime state per execution. Updated after every stage.
+
+### Run file structure:
+```
+pipeline-config/
+├── animation-pipeline.json      ← config (read-only)
+└── runs/
+    └── run_20260402_kito.json   ← runtime state (read+write)
+```
+
+The run file is the **single source of truth** shared between:
+- This skill (reads config, writes run state after each stage)
+- The frontend UI (reads run state, reflects in node editor)
+
+### Before executing a stage:
+1. Read the run file to get current state
+2. Check which stage to run next (`active_stage`)
+3. Read the config file for workflow details, node IDs, fixes
+
+### After executing a stage:
+1. Update the run file: set status, output_path, cost, duration, timestamps
+2. Advance `active_stage` to the next stage
+3. The UI will pick up the change automatically
+
+### Creating a new run:
+```bash
+cat pipeline-config/runs/run_TEMPLATE.json  # or create from config
+```
+Fill in: project info, character, style, shot details, infrastructure (pod URL).
+
 ## Getting Started
 
 When the user triggers this skill:
 
-1. **Check RunPod pod status** — is ComfyUI running? If not, tell user to start it
-2. **Verify backend connection** — is backend running with correct COMFYUI_BASE_URL?
-3. **Ask for art style** — show the style options above, let user pick or provide custom. Store as `[STYLE_KEYWORDS]`
-4. **Read project data** from SQLite:
+1. **Check for existing run files:**
+```bash
+ls pipeline-config/runs/*.json
+```
+If a run exists, ask: resume or start new?
+
+2. **If resuming:** Read the run file, find `active_stage`, continue from there
+3. **If new run:**
+   a. Check RunPod pod status
+   b. Verify backend connection
+   c. Ask for art style
+   d. Read project data from SQLite:
 ```bash
 cd /Users/ahmed/runpod/Muse-Studio/muse-studio && node -e "
 const Database = require('better-sqlite3');
@@ -185,7 +227,9 @@ console.log('Projects:', JSON.stringify(projects));
 db.close();
 "
 ```
-4. Once project is selected, read characters and scenes:
+   e. Create run file at `pipeline-config/runs/run_{date}_{name}.json`
+
+4. Read characters and scenes:
 ```bash
 cd /Users/ahmed/runpod/Muse-Studio/muse-studio && node -e "
 const Database = require('better-sqlite3');
