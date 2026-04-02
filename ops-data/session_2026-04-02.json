@@ -1,0 +1,183 @@
+{
+  "session": {
+    "date": "2026-04-02",
+    "pod_id": "8y1d0sgyew26i3",
+    "gpu": "NVIDIA L40S",
+    "vram_total_gb": 44,
+    "cost_per_hour": 0.86,
+    "datacenter": "EU-NL-1",
+    "comfyui_version": "0.17.2"
+  },
+  "generations": [
+    {
+      "stage": "1A",
+      "name": "Character Sketch",
+      "workflow": "flux2-sketch-to-image-api.json",
+      "prompt_id": "9bbebf74-efec-4731-967a-f931a1607414",
+      "duration_sec": 212,
+      "cost_usd": 0.050,
+      "first_run": true,
+      "model_load_time_sec": 151,
+      "sampling_time_sec": 50,
+      "steps": 28,
+      "resolution": "832x480",
+      "vram_peak_mb": 30000,
+      "output": "Flux2_SketchToImage_00001_.png",
+      "status": "success",
+      "notes": "First generation — model loading dominated. Used CLIPLoader type=flux2 after fixing DualCLIPLoader error"
+    },
+    {
+      "stage": "1B",
+      "name": "Character 2D (sketch ref)",
+      "workflow": "flux2-ref-to-image-api.json",
+      "prompt_id": "663801e1-cec1-4c8a-a2d0-7e8c2908efd6",
+      "duration_sec": 60,
+      "cost_usd": 0.014,
+      "first_run": false,
+      "output": "Flux2_RefToImage_00001_.png",
+      "status": "success",
+      "notes": "Used character_sketch as reference — output still looked like sketch. BAD approach"
+    },
+    {
+      "stage": "1B-v2",
+      "name": "Character 2D (Rick and Morty, no ref)",
+      "workflow": "flux2-ref-to-image-api.json",
+      "prompt_id": "d6971cff-d8f3-48f0-a43e-4504d3af9975",
+      "duration_sec": 35,
+      "cost_usd": 0.008,
+      "first_run": false,
+      "output": "Flux2_RefToImage_00002_.png",
+      "status": "success",
+      "notes": "Used blank.png for both refs, style in prompt only — MUCH better result"
+    },
+    {
+      "stage": "1B-v3",
+      "name": "Character 2D (blank refs, clean style)",
+      "workflow": "flux2-ref-to-image-api.json",
+      "prompt_id": "e8c9b639-56fc-40f7-8969-1c38587f0e51",
+      "duration_sec": 35,
+      "cost_usd": 0.008,
+      "output": "Flux2_RefToImage_00003_.png",
+      "status": "success",
+      "notes": "Best approach — blank refs + full style in prompt"
+    },
+    {
+      "stage": "test-first-frame",
+      "name": "First Frame with background",
+      "workflow": "flux2-ref-to-image-api.json",
+      "prompt_id": "6451d561-9dfc-44b9-b752-c58fc2c1cfd9",
+      "duration_sec": 35,
+      "cost_usd": 0.008,
+      "output": "Flux2_RefToImage_00004_.png",
+      "status": "success",
+      "notes": "Fox walking in magical forest — great background"
+    },
+    {
+      "stage": "test-last-frame",
+      "name": "Last Frame with background",
+      "workflow": "flux2-ref-to-image-api.json",
+      "prompt_id": "d30f9e8c-1077-4e31-b150-aaa48651d64c",
+      "duration_sec": 35,
+      "cost_usd": 0.008,
+      "output": "Flux2_RefToImage_00005_.png",
+      "status": "success"
+    },
+    {
+      "stage": "5-test",
+      "name": "Video Generation Test",
+      "workflow": "wan22-flf2v-api.json",
+      "prompt_id": "8c4b7f22-1bf6-42c4-b66d-7a7d5f589a65",
+      "duration_sec": 408,
+      "cost_usd": 0.097,
+      "status": "success",
+      "first_run": true,
+      "model_load_time_sec": 91,
+      "sampling_time_sec": 84,
+      "vae_decode_time_sec": null,
+      "vram_peak_mb": 36069,
+      "steps": "10+10 (high+low noise)",
+      "frames": 81,
+      "resolution": "832x480",
+      "output": "WAN22_FLF2V_00001_.mp4",
+      "output_size_kb": 397,
+      "notes": "WAN 2.2 FLF2V first run. Model init ~91s per expert. Sampling ~8.9s/step. Total 408s."
+    }
+  ],
+  "session_summary": {
+    "pod_start": "09:35:18",
+    "pod_stop": "12:04:00",
+    "uptime_min": 149,
+    "total_generations": 7,
+    "successful": 7,
+    "failed_attempts": 6,
+    "total_gpu_cost_usd": 2.14,
+    "total_generation_cost_usd": 0.19,
+    "wasted_on_debugging_usd": 1.95,
+    "debugging_issues": [
+      "DualCLIPLoader vs CLIPLoader (15 min)",
+      "type=flux vs flux2 (2 min)",
+      "resolution_steps missing (3 min)",
+      "Model symlink corruption (20 min)",
+      "Backend no dotenv (15 min)",
+      "ComfyUI autostart before symlinks (10 min)",
+      "SaveVideo missing format/codec (2 min)"
+    ],
+    "lesson": "91% of cost was debugging. Pre-validate workflows locally before RunPod."
+  }
+  ],
+  "errors": [
+    {
+      "type": "DualCLIPLoader",
+      "error": "mat1 and mat2 shapes cannot be multiplied (512x4096 and 15360x6144)",
+      "cause": "Flux 2 needs CLIPLoader not DualCLIPLoader. clip_l.safetensors not used by Flux 2",
+      "fix": "Replace DualCLIPLoader with CLIPLoader, type=flux2, remove clip_l",
+      "time_wasted_min": 15
+    },
+    {
+      "type": "type_mismatch",
+      "error": "type: 'flux' not in list... 'flux2' is correct",
+      "fix": "Change type from 'flux' to 'flux2' in CLIPLoader",
+      "time_wasted_min": 2
+    },
+    {
+      "type": "resolution_steps",
+      "error": "ImageScaleToTotalPixels missing resolution_steps",
+      "fix": "Add resolution_steps: 1 to inputs",
+      "time_wasted_min": 3
+    },
+    {
+      "type": "SaveVideo_fields",
+      "error": "SaveVideo missing format and codec",
+      "fix": "Add format: mp4, codec: h264",
+      "time_wasted_min": 2
+    },
+    {
+      "type": "model_symlink_corruption",
+      "error": "curl -o writes through symlink, corrupting target file",
+      "fix": "Always rm symlink before downloading. Verify file size after",
+      "time_wasted_min": 20
+    },
+    {
+      "type": "comfyui_autostart",
+      "error": "RunPod Docker auto-starts ComfyUI before symlinks exist — models not visible",
+      "fix": "Kill auto-started process, restart with extra_model_paths.yaml",
+      "time_wasted_min": 10
+    },
+    {
+      "type": "backend_no_dotenv",
+      "error": "Backend ignores .env file, uses default COMFYUI_BASE_URL",
+      "fix": "Pass COMFYUI_BASE_URL as inline shell env var",
+      "time_wasted_min": 15
+    }
+  ],
+  "model_downloads": [
+    {"model": "clip_l.safetensors", "size_gb": 0.23, "duration_sec": 5, "needed": false, "note": "Not used by Flux 2"},
+    {"model": "mistral_3_small_flux2_fp8.safetensors", "size_gb": 17, "duration_sec": 600, "needed": true},
+    {"model": "mistral_3_small_flux2_fp4_mixed.safetensors", "size_gb": 11.4, "duration_sec": 400, "needed": false, "note": "Downloaded but fp8 works fine"}
+  ],
+  "gpu_snapshots": [
+    {"time": "09:43:00", "gpu_util_pct": 56, "vram_used_mb": 7197, "temp_c": 51, "power_w": 280, "task": "flux2 image gen"},
+    {"time": "09:55:00", "gpu_util_pct": 14, "vram_used_mb": 14789, "temp_c": 50, "power_w": 162, "task": "wan2.2 model loading"},
+    {"time": "09:57:00", "gpu_util_pct": 4, "vram_used_mb": 24901, "temp_c": 50, "power_w": 162, "task": "wan2.2 low noise pass"}
+  ]
+}

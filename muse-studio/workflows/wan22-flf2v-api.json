@@ -185,6 +185,8 @@
     "class_type": "SaveVideo",
     "inputs": {
       "filename_prefix": "WAN22_FLF2V",
+      "format": "mp4",
+      "codec": "h264",
       "video": ["32", 0]
     },
     "_meta": {

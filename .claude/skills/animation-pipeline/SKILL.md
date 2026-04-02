@@ -151,13 +151,31 @@ For EACH stage, follow this exact sequence:
 - **Inputs:** first_frame_final.png (First Frame) + last_frame_final.png (Last Frame) + positive prompt + negative prompt
 - **Output:** `video.mp4`
 
+## Style Configuration
+
+At the start of every pipeline run, ask the user which art style to use. The style choice affects ALL prompt templates below.
+
+**Default style:** `2D flat vector animation, bold black outlines, simple cel-shading, vibrant solid colors, clean minimalist backgrounds, high contrast`
+
+**Example styles the user might choose:**
+| Style | Style Keywords |
+|---|---|
+| **Rick and Morty** | `2D flat vector animation style, Rick and Morty art style, bold black outlines, simple cel-shading, vibrant solid colors, clean minimalist backgrounds, high contrast, adult animation aesthetic` |
+| **Studio Ghibli** | `Studio Ghibli art style, soft watercolor textures, gentle lighting, lush detailed backgrounds, warm color palette, hand-drawn feel, expressive characters` |
+| **Disney 2D** | `classic Disney 2D animation style, smooth line art, rich colors, expressive features, dynamic poses, polished cel shading` |
+| **Anime** | `anime art style, sharp clean lines, vibrant colors, dramatic lighting, detailed eyes, manga-influenced proportions` |
+| **Minimalist** | `minimalist vector art, flat colors, geometric shapes, limited color palette, no outlines, modern design` |
+
+The user can also provide their own custom style keywords. Store the chosen style as `[STYLE_KEYWORDS]` and inject it into every prompt template.
+
 ## Getting Started
 
 When the user triggers this skill:
 
 1. **Check RunPod pod status** — is ComfyUI running? If not, tell user to start it
 2. **Verify backend connection** — is backend running with correct COMFYUI_BASE_URL?
-3. **Read project data** from SQLite:
+3. **Ask for art style** — show the style options above, let user pick or provide custom. Store as `[STYLE_KEYWORDS]`
+4. **Read project data** from SQLite:
 ```bash
 cd /Users/ahmed/runpod/Muse-Studio/muse-studio && node -e "
 const Database = require('better-sqlite3');
@@ -184,19 +202,21 @@ db.close();
 
 ## Prompt Templates
 
+All templates use `[STYLE_KEYWORDS]` from the style configuration step.
+
 ### Stage 1A — Character Sketch
 ```
 character sketch, rough line art, [CHARACTER_DESCRIPTION],
 front view, 3/4 view, side view,
 pencil sketch style, white background
 ```
+Note: Stage 1A always uses sketch style regardless of chosen style — it's a composition reference.
 
 ### Stage 1B — Character 2D
 ```
-character sheet, 2D animated [CHARACTER_DESCRIPTION],
+character sheet, [CHARACTER_DESCRIPTION],
 front view, 3/4 view, side view,
-flat colors, clean line art, thick black outlines,
-cel shading, white background
+[STYLE_KEYWORDS], white background
 ```
 
 ### Stage 2 & 3 — Scene Sketches
@@ -206,21 +226,22 @@ scene sketch, rough line art,
 [CAMERA_ANGLE], pencil sketch style,
 composition reference, clear proportions
 ```
+Note: Stages 2 & 3 also use sketch style — they're composition guides, not final output.
 For Stage 3, describe the ENDING pose (should differ slightly from Stage 2).
 
-### Stage 4A & 4B — Final 2D Frames
+### Stage 4A & 4B — Final Frames (style applied here)
 ```
-2D animated scene, [CHARACTER_NAME] [ACTION/POSE],
+[CHARACTER_NAME] [ACTION/POSE],
 [BACKGROUND_DESCRIPTION],
-flat colors, clean line art, smooth cel shading,
-consistent thick black outlines, vibrant colors,
+[STYLE_KEYWORDS],
 [LIGHTING_DESCRIPTION]
 ```
+This is where the chosen art style matters most — these are the frames that become the video.
 
 ### Stage 5 — Video Motion
 ```
-Positive: 2D animated [CHARACTER_NAME] [SPECIFIC_MOTION],
-smooth motion, flat colors, clean line art, cel shading,
+Positive: [CHARACTER_NAME] [SPECIFIC_MOTION],
+smooth motion, [STYLE_KEYWORDS],
 consistent character proportions, fluid animation
 
 Negative: 3D render, realistic, blurry, distorted, morphing,
@@ -298,10 +319,9 @@ The 300-second HTTP timeout in the ComfyUI runner is sufficient for all stages i
 All models must be on the RunPod network volume (`/workspace/ComfyUI/models/`). The startup script creates symlinks to ComfyUI's model directories. Required models:
 
 **Flux 2 (Stages 1-4):**
-- `checkpoints/flux2_dev_fp8mixed.safetensors`
-- `text_encoders/mistral_3_small_flux2_bf16.safetensors`
-- `clip/clip_l.safetensors`
-- `vae/flux2-vae.safetensors`
+- `diffusion_models/flux2_dev_fp8mixed.safetensors` (34GB)
+- `text_encoders/mistral_3_small_flux2_fp8.safetensors` (17GB) — NOT bf16, NOT clip_l
+- `vae/flux2-vae.safetensors` (321MB)
 
 **WAN 2.2 (Stage 5):**
 - `checkpoints/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors`
@@ -344,12 +364,40 @@ For projects with multiple shots:
 - **Continuity rule:** Last Frame of Shot N ≈ First Frame of Shot N+1
 - Use same location reference across all shots in same scene
 
+## Known Issues & Fixes (from real testing)
+
+### Issue 1: ComfyUI on RunPod doesn't see models after pod start
+The RunPod Docker image auto-starts ComfyUI on port 8188 BEFORE the startup script creates symlinks. You must kill PID of the auto-started process and restart ComfyUI.
+```bash
+ssh -tt ... "kill -9 \$(netstat -tlnp | grep 8188 | awk '{print \$NF}' | cut -d/ -f1); sleep 3; tmux new-session -d -s comfyui 'cd /opt/comfyui-baked && python3 main.py --listen 0.0.0.0 --port 8188 --extra-model-paths-config /workspace/extra_model_paths.yaml'"
+```
+**Verify models loaded:** `curl -s COMFYUI_URL/object_info/UNETLoader` — the unet_name list must NOT be empty.
+
+### Issue 2: ImageScaleToTotalPixels needs `resolution_steps`
+Newer ComfyUI versions require `resolution_steps` (INT, default 1) in `ImageScaleToTotalPixels` nodes. If the workflow was built on an older version, add this field:
+```json
+"inputs": { "image": [...], "upscale_method": "lanczos", "megapixels": 1, "resolution_steps": 1 }
+```
+
+### Issue 3: Stage 1A has no input image — LoadImage node fails
+Stage 1A generates from prompt only, but the workflow still has a LoadImage node (node 4) expecting `sketch.png`. For Stage 1A specifically, you must upload a blank/placeholder image to ComfyUI's input folder first, OR modify the workflow to skip the LoadImage node.
+
+**Quick fix:** Upload a 832x480 white image as placeholder:
+```bash
+ssh -tt ... "python3 -c \"from PIL import Image; Image.new('RGB',(832,480),(255,255,255)).save('/opt/comfyui-baked/input/blank.png')\""
+```
+Then set node 4 `inputs.image` to `"blank.png"`.
+
+### Issue 4: `fuser -k` and `pkill` unreliable on RunPod
+Use `kill -9 PID` directly. Find PID with `netstat -tlnp | grep PORT`.
+`lsof` is NOT available on the RunPod Docker image — use `netstat` instead.
+
 ## Error Handling
 
 | Error | Cause | Action |
 |---|---|---|
 | "All connection attempts failed" | Backend can't reach ComfyUI | Check pod is running, verify COMFYUI_BASE_URL |
-| "400 Bad Request" on /prompt | Workflow JSON malformed or model missing | Check node IDs, verify models on volume |
+| "400 Bad Request" on /prompt | Workflow JSON malformed, model missing, or node validation failed | Check error details — often missing `resolution_steps` or invalid image reference |
 | Job stuck at "running" > 5 min | GPU overloaded or ComfyUI hung | Check pod status via RunPod API, restart if needed |
 | "CUDA out of memory" | GPU OOM | Reduce batch size or use smaller resolution |
 | Output wrong style | Prompt issue | Adjust prompt keywords, re-run stage |

@@ -10,11 +10,10 @@
     }
   },
   "2": {
-    "class_type": "DualCLIPLoader",
+    "class_type": "CLIPLoader",
     "inputs": {
-      "clip_name1": "mistral_3_small_flux2_bf16.safetensors",
-      "clip_name2": "clip_l.safetensors",
-      "type": "flux"
+      "clip_name": "mistral_3_small_flux2_fp8.safetensors",
+      "type": "flux2"
     },
     "_meta": {
       "title": "Flux 2 CLIP"
