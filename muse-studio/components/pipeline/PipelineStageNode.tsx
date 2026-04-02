@@ -313,9 +313,6 @@ function GeneratingBody() {
 }
 
 function ReviewBody({
-  stageId,
-  outputPath,
-  kind,
   onApprove,
   onRetry,
 }: {
@@ -327,49 +324,18 @@ function ReviewBody({
 }) {
   return (
     <div className="flex flex-col gap-2 py-2">
-      <div className="relative overflow-hidden rounded-lg">
-        {kind === 'image' ? (
-          <motion.div
-            key={`${stageId}-${outputPath}`}
-            initial={{ filter: 'blur(12px)', opacity: 0, scale: 1.04 }}
-            animate={{ filter: 'blur(0px)', opacity: 1, scale: 1 }}
-            transition={{ duration: 0.7, ease: 'easeOut' }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={outputPath}
-              alt={`Stage ${stageId} output`}
-              className="w-full h-[100px] object-cover rounded-lg"
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key={`${stageId}-${outputPath}`}
-            initial={{ filter: 'blur(12px)', opacity: 0, scale: 1.04 }}
-            animate={{ filter: 'blur(0px)', opacity: 1, scale: 1 }}
-            transition={{ duration: 0.7, ease: 'easeOut' }}
-            className="relative"
-          >
-            <video
-              src={outputPath}
-              muted
-              playsInline
-              className="w-full h-[100px] object-cover rounded-lg"
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="size-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <Play className="size-3 text-white ml-0.5" />
-              </div>
-            </div>
-          </motion.div>
-        )}
+      <div className="flex items-center gap-2 px-1">
+        <div className="size-5 rounded-full bg-film-gold/15 flex items-center justify-center">
+          <Check className="size-2.5 text-film-gold" />
+        </div>
+        <span className="text-[10px] text-film-gold/80 font-medium">Ready for review</span>
       </div>
 
       <motion.div
         className="flex items-center gap-1.5"
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.4 }}
+        transition={{ duration: 0.3, delay: 0.2 }}
       >
         <Button
           onClick={(e) => {
@@ -399,8 +365,6 @@ function ReviewBody({
 }
 
 function ApprovedBody({
-  stageId,
-  outputPath,
   cost,
   durationSec,
 }: {
@@ -411,30 +375,21 @@ function ApprovedBody({
 }) {
   return (
     <div className="flex items-center gap-2.5 py-2">
-      {outputPath && (
+      <div className="flex items-center gap-2 flex-1">
         <motion.div
-          initial={{ filter: 'blur(8px)', opacity: 0 }}
-          animate={{ filter: 'blur(0px)', opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          className="shrink-0"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 15 }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={outputPath}
-            alt={`Stage ${stageId} approved`}
-            className="w-[60px] h-[60px] object-cover rounded-lg"
-          />
+          <div className="size-6 rounded-full bg-muse-emerald/15 flex items-center justify-center">
+            <Check className="size-3 text-muse-emerald" />
+          </div>
         </motion.div>
-      )}
-
-      <div className="flex flex-col items-center gap-1 flex-1">
-        <div className="size-6 rounded-full bg-muse-emerald/15 flex items-center justify-center">
-          <Check className="size-3 text-muse-emerald" />
-        </div>
+        <span className="text-[10px] text-muse-emerald/80 font-medium">Approved</span>
         {(cost != null || durationSec != null) && (
-          <span className="text-[9px] text-white/30 font-mono">
+          <span className="text-[9px] text-white/30 font-mono ml-auto">
             {cost != null && `$${cost.toFixed(3)}`}
-            {cost != null && durationSec != null && ' | '}
+            {cost != null && durationSec != null && ' · '}
             {durationSec != null && `${durationSec}s`}
           </span>
         )}
