@@ -39,6 +39,7 @@ const STAGE_HANDLES: Record<string, { inputs: StageHandle[]; outputs: StageHandl
   },
   '1B': {
     inputs: [
+      { id: 'sketch_ref', label: 'Sketch (composition)', type: 'image', position: 'input' },
       { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
     ],
     outputs: [
@@ -47,21 +48,23 @@ const STAGE_HANDLES: Record<string, { inputs: StageHandle[]; outputs: StageHandl
   },
   '2': {
     inputs: [
+      { id: 'char_ref', label: 'Character Ref', type: 'image', position: 'input' },
       { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
       { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
     ],
     outputs: [
-      { id: 'first_frame_sketch', label: 'First Frame Sketch', type: 'image', position: 'output' },
+      { id: 'first_frame', label: 'First Frame', type: 'image', position: 'output' },
     ],
   },
   '3': {
     inputs: [
+      { id: 'char_ref', label: 'Character Ref', type: 'image', position: 'input' },
+      { id: 'scene_ref', label: 'Scene Ref (Frame 1)', type: 'image', position: 'input' },
       { id: 'prompt', label: 'Prompt', type: 'text', position: 'input' },
       { id: 'identity', label: 'PuLID ID', type: 'image', position: 'input' },
-      { id: 'style_ref', label: 'Style Ref', type: 'image', position: 'input' },
     ],
     outputs: [
-      { id: 'last_frame_sketch', label: 'Last Frame Sketch', type: 'image', position: 'output' },
+      { id: 'last_frame', label: 'Last Frame', type: 'image', position: 'output' },
     ],
   },
   '4A': {
@@ -125,29 +128,32 @@ const EDGE_DEFS: {
   targetHandle: string;
   label?: string;
 }[] = [
-  // 1A outputs
-  { id: 'e-1A-1B-sketch', source: '1A', sourceHandle: '1A-character_sketch', target: '1B', targetHandle: '1B-prompt', label: 'sketch ref' },
+  // === 1A sketch → 1B as composition guide ===
+  { id: 'e-1A-1B-comp', source: '1A', sourceHandle: '1A-character_sketch', target: '1B', targetHandle: '1B-sketch_ref', label: 'composition' },
 
-  // 1B character_2d goes to 4A and 4B as character_ref
-  { id: 'e-1B-4A-char', source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-character_ref', label: 'character ref' },
-  { id: 'e-1B-4B-char', source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-character_ref', label: 'character ref' },
+  // === 1B character_2d — the central identity asset ===
+  // Goes to Stages 2 & 3 as ReferenceLatent (body+style anchor)
+  { id: 'e-1B-2-ref',    source: '1B', sourceHandle: '1B-character_2d', target: '2',  targetHandle: '2-char_ref',     label: 'character ref' },
+  { id: 'e-1B-3-ref',    source: '1B', sourceHandle: '1B-character_2d', target: '3',  targetHandle: '3-char_ref',     label: 'character ref' },
+  // Goes to Stages 4A & 4B as character reference
+  { id: 'e-1B-4A-char',  source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-character_ref', label: 'character ref' },
+  { id: 'e-1B-4B-char',  source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-character_ref', label: 'character ref' },
+  // Goes to 2, 3, 4A, 4B as PuLID face identity
+  { id: 'e-1B-2-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '2',  targetHandle: '2-identity',     label: 'PuLID ID' },
+  { id: 'e-1B-3-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '3',  targetHandle: '3-identity',     label: 'PuLID ID' },
+  { id: 'e-1B-4A-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-identity',    label: 'PuLID ID' },
+  { id: 'e-1B-4B-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-identity',    label: 'PuLID ID' },
 
-  // 1B character_2d goes to 2, 3, 4A, 4B as PuLID identity
-  { id: 'e-1B-2-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '2',  targetHandle: '2-identity',  label: 'PuLID ID' },
-  { id: 'e-1B-3-pulid',  source: '1B', sourceHandle: '1B-character_2d', target: '3',  targetHandle: '3-identity',  label: 'PuLID ID' },
-  { id: 'e-1B-4A-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4A', targetHandle: '4A-identity', label: 'PuLID ID' },
-  { id: 'e-1B-4B-pulid', source: '1B', sourceHandle: '1B-character_2d', target: '4B', targetHandle: '4B-identity', label: 'PuLID ID' },
+  // === Stage 2 first_frame — feeds into Stage 3 + 4A ===
+  { id: 'e-2-3-scene',   source: '2', sourceHandle: '2-first_frame',    target: '3',  targetHandle: '3-scene_ref',     label: 'scene continuity' },
+  { id: 'e-2-4A-scene',  source: '2', sourceHandle: '2-first_frame',    target: '4A', targetHandle: '4A-scene_sketch',  label: 'scene ref' },
 
-  // 2 first_frame_sketch
-  { id: 'e-2-3-style',   source: '2', sourceHandle: '2-first_frame_sketch', target: '3',  targetHandle: '3-style_ref',    label: 'style ref' },
-  { id: 'e-2-4A-scene',  source: '2', sourceHandle: '2-first_frame_sketch', target: '4A', targetHandle: '4A-scene_sketch', label: 'scene sketch' },
+  // === Stage 3 last_frame — feeds into 4B ===
+  { id: 'e-3-4B-scene',  source: '3', sourceHandle: '3-last_frame',     target: '4B', targetHandle: '4B-scene_sketch',  label: 'scene ref' },
 
-  // 3 last_frame_sketch
-  { id: 'e-3-4B-scene', source: '3', sourceHandle: '3-last_frame_sketch', target: '4B', targetHandle: '4B-scene_sketch', label: 'scene sketch' },
-
-  // 4A, 4B to 5
-  { id: 'e-4A-5-first', source: '4A', sourceHandle: '4A-first_frame_final', target: '5', targetHandle: '5-first_frame', label: 'first frame' },
-  { id: 'e-4B-5-last',  source: '4B', sourceHandle: '4B-last_frame_final',  target: '5', targetHandle: '5-last_frame',  label: 'last frame' },
+  // === 4A, 4B final frames → Video ===
+  { id: 'e-4A-5-first',  source: '4A', sourceHandle: '4A-first_frame_final', target: '5', targetHandle: '5-first_frame', label: 'first frame' },
+  { id: 'e-4B-5-last',   source: '4B', sourceHandle: '4B-last_frame_final',  target: '5', targetHandle: '5-last_frame',  label: 'last frame' },
 ];
 
 // ---------------------------------------------------------------------------

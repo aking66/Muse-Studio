@@ -228,8 +228,8 @@
       "style_applied": true,
       "prompt_template": "character sheet, {character.description}, front view, 3/4 view, side view, {style.keywords}, white background",
       "inputs": {
-        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "Do NOT use character_sketch — ReferenceLatent copies sketch style"},
-        "5": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "No style ref for first character gen"},
+        "4": {"field": "inputs.image", "value": "blank.png", "source": "placeholder", "note": "Blank for node 4 — prevents sketch style copying"},
+        "5": {"field": "inputs.image", "value": "{stages.1A.output}", "source": "stage_output", "role": "Composition guide from sketch", "note": "Sketch as style ref influences layout/composition without forcing sketch style. Node 5 (second ReferenceLatent) has weaker influence than node 4."},
         "6": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "7": {"field": "inputs.resolution_steps", "value": 1, "source": "fix"},
         "8": {"field": "inputs.text", "value": "{prompt}", "source": "generated"},
