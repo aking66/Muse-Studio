@@ -158,6 +158,20 @@
         "name": "Minimalist",
         "keywords": "minimalist vector art, flat colors, geometric shapes, limited color palette, no outlines, modern design",
         "negative": "detailed, realistic, complex backgrounds, 3D render, blurry"
+      },
+      {
+        "id": "anime-limited",
+        "name": "Anime Limited (on 2s/3s)",
+        "keywords": "anime art style, sharp clean lines, vibrant flat colors, dramatic lighting, detailed eyes, manga-influenced proportions, held poses, minimal motion",
+        "negative": "3D render, western cartoon, blurry, distorted, low quality, morphing, smooth motion",
+        "animation": {"frame_skip": "on3s", "wan_frames": 49, "post": "ffmpeg fps=5.33"}
+      },
+      {
+        "id": "anime-sakuga",
+        "name": "Anime Sakuga (on 1s)",
+        "keywords": "anime art style, sakuga quality, dynamic fluid motion, sharp clean lines, vibrant colors, dramatic lighting, detailed eyes, high energy action",
+        "negative": "3D render, western cartoon, blurry, distorted, low quality, static, still frame",
+        "animation": {"frame_skip": "none", "wan_frames": 33, "post": "rife_2x"}
       }
     ]
   },
@@ -177,8 +191,8 @@
     "fps": 16,
     "duration_sec": 5.0,
     "cfg": 1.0,
-    "steps": 20,
-    "step_split": {"high_noise": 10, "low_noise": 10},
+    "steps": 30,
+    "step_split": {"high_noise": 15, "low_noise": 15},
     "shift": 8.0,
     "frame_rule": "Must be 4n+1: 17, 33, 49, 65, 81, 97",
     "frame_options": [
