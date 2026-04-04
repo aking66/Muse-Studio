@@ -1,0 +1,193 @@
+{
+  "experiment": {
+    "id": "anime-style-test-v1",
+    "date": "2026-04-04",
+    "goal": "Test Limited/Anime animation style with 3 iconic scene types",
+    "styles_tested": ["limited_anime_on3s", "limited_anime_on2s", "sakuga_full"]
+  },
+
+  "character": {
+    "name": "Kai",
+    "description": "A young male anime protagonist with messy dark blue hair, sharp determined eyes, wearing a white t-shirt with a dark blue jacket, slim build, age 18",
+    "style_keywords": "anime art style, sharp clean lines, vibrant colors, dramatic lighting, detailed eyes, manga-influenced proportions"
+  },
+
+  "scenes": [
+    {
+      "id": "scene_01_dialogue",
+      "name": "Anime Dialogue — Head Turn",
+      "animation_style": "limited_anime_on3s",
+      "reference": "Classic anime dialogue scene (Evangelion, Death Note style)",
+      "description": "Character standing in a room, turns head from looking left to looking right with a subtle expression change",
+      "motion_intensity": "small",
+      "wan_frames": 49,
+      "post_processing": "frame_skip_on3s",
+
+      "stages": {
+        "1A": {
+          "prompt": "character sketch, rough line art, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, front view, 3/4 view, pencil sketch style, white background"
+        },
+        "1B": {
+          "prompt": "character sheet, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, front view, 3/4 view, anime art style, sharp clean lines, vibrant colors, detailed eyes, white background"
+        },
+        "2": {
+          "prompt": "Kai standing in a dimly lit apartment room, looking to the left with a calm neutral expression, 3/4 view from front, anime art style, sharp clean lines, vibrant colors, dramatic side lighting from window, indoor scene, warm color palette",
+          "action": "standing, looking left, calm expression"
+        },
+        "3": {
+          "prompt": "Kai standing in a dimly lit apartment room, head turned to the right with a slightly surprised expression, eyes widened slightly, 3/4 view from front, anime art style, sharp clean lines, vibrant colors, dramatic side lighting from window, indoor scene, warm color palette, same background composition as first frame",
+          "action": "standing, head turned right, surprised expression"
+        },
+        "4A": {
+          "prompt": "Kai standing in a dimly lit apartment room, looking to the left with calm neutral expression, warm dramatic side lighting from window casting shadows, detailed interior background with bookshelf and desk, anime art style, sharp clean lines, vibrant colors, cinematic composition"
+        },
+        "4B": {
+          "prompt": "Kai standing in a dimly lit apartment room, head turned to the right with slightly surprised expression, warm dramatic side lighting from window casting shadows, detailed interior background with bookshelf and desk, anime art style, sharp clean lines, vibrant colors, cinematic composition"
+        },
+        "5": {
+          "positive": "Kai slowly turns his head from left to right, subtle expression change from calm to surprised, smooth head rotation, anime style animation, sharp lines, flat colors, consistent character proportions, indoor lighting",
+          "negative": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+        }
+      }
+    },
+
+    {
+      "id": "scene_02_walk",
+      "name": "Anime Walk Cycle",
+      "animation_style": "limited_anime_on2s",
+      "reference": "Studio Ghibli calm walking scene (Spirited Away, Howl's Moving Castle)",
+      "description": "Character walking forward on a quiet street, side view, steady pace",
+      "motion_intensity": "medium",
+      "wan_frames": 81,
+      "post_processing": "frame_skip_on2s",
+
+      "stages": {
+        "1A": {
+          "prompt": "character sketch, rough line art, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, side view walking pose, pencil sketch style, white background"
+        },
+        "1B": {
+          "prompt": "character sheet, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, side view walking pose, anime art style, sharp clean lines, vibrant colors, detailed eyes, white background"
+        },
+        "2": {
+          "prompt": "Kai walking on a quiet suburban street, side view, left foot forward mid-stride, arms swinging naturally, looking ahead, late afternoon golden hour lighting, cherry blossom trees lining the street, anime art style, sharp clean lines, vibrant colors, Studio Ghibli inspired background",
+          "action": "walking, left foot forward, mid-stride"
+        },
+        "3": {
+          "prompt": "Kai walking on a quiet suburban street, side view, right foot forward mid-stride, arms swinging naturally, looking ahead, moved slightly further along the street, late afternoon golden hour lighting, cherry blossom trees lining the street, anime art style, sharp clean lines, vibrant colors, Studio Ghibli inspired background, same background composition as first frame",
+          "action": "walking, right foot forward, mid-stride, moved forward"
+        },
+        "4A": {
+          "prompt": "Kai walking on a quiet suburban street, side view, left foot forward mid-stride, arms in natural walking position, late afternoon golden hour sunlight casting long warm shadows, cherry blossom petals floating in air, detailed background with houses and trees, anime art style, sharp clean lines, vibrant warm colors, cinematic wide shot"
+        },
+        "4B": {
+          "prompt": "Kai walking on a quiet suburban street, side view, right foot forward mid-stride, arms in natural walking position, moved slightly further along the street, late afternoon golden hour sunlight casting long warm shadows, cherry blossom petals floating in air, detailed background with houses and trees, anime art style, sharp clean lines, vibrant warm colors, cinematic wide shot"
+        },
+        "5": {
+          "positive": "Kai walking steadily along a suburban street, natural walking cycle, side view, arms and legs moving rhythmically, cherry blossom petals drifting in the breeze, smooth walking animation, anime style, sharp lines, flat colors, consistent character proportions, golden hour lighting",
+          "negative": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+        }
+      }
+    },
+
+    {
+      "id": "scene_03_sakuga",
+      "name": "Sakuga Punch — Action Burst",
+      "animation_style": "sakuga_full",
+      "reference": "Dragon Ball / Naruto / Jujutsu Kaisen impact punch",
+      "description": "Character throws a powerful punch toward camera, dramatic impact with speed lines",
+      "motion_intensity": "large",
+      "wan_frames": 33,
+      "post_processing": "rife_2x_to_24fps",
+
+      "stages": {
+        "1A": {
+          "prompt": "character sketch, rough line art, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, dynamic action pose, fist forward, pencil sketch style, white background"
+        },
+        "1B": {
+          "prompt": "character sheet, young male anime protagonist with messy dark blue hair, sharp determined eyes, white t-shirt with dark blue jacket, slim build, dynamic action pose, anime art style, sharp clean lines, vibrant colors, detailed eyes, white background"
+        },
+        "2": {
+          "prompt": "Kai in fighting stance, right fist pulled back ready to punch, intense determined expression, low angle dramatic shot, dark arena background with dramatic spotlight, anime art style, sharp clean lines, vibrant colors, dramatic lighting, high contrast shadows, energy aura",
+          "action": "fighting stance, fist pulled back, intense expression"
+        },
+        "3": {
+          "prompt": "Kai with right fist extended forward in a powerful punch toward camera, body fully rotated, intense fierce expression, fist filling foreground, radial speed lines emanating from fist, low angle dramatic shot, dark arena background with dramatic spotlight, anime art style, sharp clean lines, vibrant colors, dramatic lighting, impact energy burst",
+          "action": "fist extended forward, full punch, fierce expression"
+        },
+        "4A": {
+          "prompt": "Kai in fighting stance with right fist pulled back behind his shoulder, crouching slightly with coiled energy, intense determined expression with glowing eyes, low angle dramatic camera, dark arena with single harsh spotlight from above, anime art style, sharp clean lines, high contrast, dramatic shadows, subtle energy aura around fist"
+        },
+        "4B": {
+          "prompt": "Kai with right fist thrust forward in devastating punch toward viewer, body fully extended and rotated, fierce battle cry expression, fist large in foreground with radial speed lines, impact shockwave ripple, low angle dramatic camera, dark arena with single harsh spotlight, anime art style, sharp clean lines, high contrast, dramatic shadows, explosive energy burst"
+        },
+        "5": {
+          "positive": "Kai throws a powerful punch, explosive fast motion from pulled-back fist to full extension toward camera, intense action, dramatic speed lines, impact burst, anime sakuga quality animation, dynamic fluid motion, sharp lines, high contrast, energy effects, camera shake",
+          "negative": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+        }
+      }
+    }
+  ],
+
+  "post_processing": {
+    "frame_skip_on3s": {
+      "description": "Limited anime on 3s — 8 unique drawings per second",
+      "command": "ffmpeg -i {input} -vf \"fps=5.33,setpts=N/16/TB\" -r 16 {output}",
+      "note": "Extract every 3rd frame from 16fps, duplicate 3x, output at 16fps"
+    },
+    "frame_skip_on2s": {
+      "description": "Limited anime on 2s — 12 unique drawings per second",
+      "command": "ffmpeg -i {input} -vf \"fps=8,setpts=N/16/TB\" -r 16 {output}",
+      "note": "Extract every 2nd frame from 16fps, duplicate 2x, output at 16fps"
+    },
+    "rife_2x_to_24fps": {
+      "description": "Full animation — RIFE interpolate to smooth 24fps",
+      "command": "cd /Users/ahmed/runpod/Practical-RIFE && python3 inference_video.py --multi=2 --video={input}",
+      "note": "Doubles frame count (16fps x 2 = 32fps effective), then encode at 24fps"
+    }
+  },
+
+  "workflow_overrides": {
+    "scene_01_dialogue": {
+      "wan_node_14_length": 49,
+      "wan_note": "49 frames = ~3 sec, enough for a head turn"
+    },
+    "scene_02_walk": {
+      "wan_node_14_length": 81,
+      "wan_note": "81 frames = ~5 sec, full walk cycle"
+    },
+    "scene_03_sakuga": {
+      "wan_node_14_length": 33,
+      "wan_note": "33 frames = ~2 sec, fast punch is short and intense"
+    }
+  },
+
+  "execution_order": [
+    {"stage": "1A", "scene": "shared", "workflow": "flux2-sketch-to-image-api.json", "note": "One character sketch for all scenes"},
+    {"stage": "1B", "scene": "shared", "workflow": "flux2-ref-to-image-api.json", "note": "One character sheet for all scenes"},
+    {"stage": "2",  "scene": "scene_01_dialogue", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "3",  "scene": "scene_01_dialogue", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "2",  "scene": "scene_02_walk", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "3",  "scene": "scene_02_walk", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "2",  "scene": "scene_03_sakuga", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "3",  "scene": "scene_03_sakuga", "workflow": "flux2-ref-to-image-api.json"},
+    {"stage": "4A", "scene": "scene_01_dialogue", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "4B", "scene": "scene_01_dialogue", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "4A", "scene": "scene_02_walk", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "4B", "scene": "scene_02_walk", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "4A", "scene": "scene_03_sakuga", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "4B", "scene": "scene_03_sakuga", "workflow": "flux2-multiref-scene-api.json"},
+    {"stage": "5",  "scene": "scene_01_dialogue", "workflow": "wan22-flf2v-api.json"},
+    {"stage": "5",  "scene": "scene_02_walk", "workflow": "wan22-flf2v-api.json"},
+    {"stage": "5",  "scene": "scene_03_sakuga", "workflow": "wan22-flf2v-api.json"}
+  ],
+
+  "estimated_cost": {
+    "flux2_generations": 14,
+    "wan22_generations": 3,
+    "flux2_time_sec": "14 x 60 = 840 sec (cached)",
+    "wan22_time_sec": "1 x 408 (first) + 2 x 180 (cached) = 768 sec",
+    "total_time_sec": 1608,
+    "total_time_min": "~27 min",
+    "total_cost_usd": "~$0.38"
+  }
+}
